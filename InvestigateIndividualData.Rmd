@@ -1,0 +1,599 @@
+---
+title: "IndividualFits"
+output: html_document
+---
+
+```{r setup, , echo=FALSE,message=FALSE,warning=FALSE,include=FALSE}
+library("RColorBrewer")
+library("ggplot2")
+library("cowplot")
+library(stringr)
+
+source("preprocess_data.R")
+source("FitUVSDT.R")
+
+models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT")
+experiment <- "SB2021_e2"
+
+load_files <- function(path,pattern) {
+
+  files <- dir(path, pattern = pattern,full.names = TRUE,recursive = FALSE)
+  # search for test data (dataTEST) file in all subdirectories (recursive) of path
+  tables <- lapply(files, readRDS)
+  do.call(bind_rows, tables)
+  # collate all of them into 1 dataframe
+}
+
+fits <- load_files("Fits2/","fit")
+fullsubj <- readRDS("SB2021_individualpredictions.rds") %>% filter(exp == experiment)
+
+
+bestfit <- fits %>% filter(exp == experiment) %>% 
+  mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
+  mutate(AIC = 2 * npar + 2 * objective) %>%
+  group_by(model,id,condition) %>%
+  arrange(objective) %>%
+  dplyr::slice(1) %>% 
+  mutate(condid = paste0(id,"_",condition))
+
+
+allfits <- bestfit %>%
+  filter(model %in% models) %>%
+  group_by(exp,condid) %>%
+  mutate(delAIC = AIC - min(AIC))
+
+
+winning <- allfits %>%
+  filter(delAIC == 0)
+
+
+GumbelWin <- winning %>% filter(model == "GumbelEVSDT" & delAIC == 0) %>% .$condid
+EVSDTWin <- winning %>% filter(model == "GaussianEVSDT" & delAIC == 0) %>% .$condid
+UVSDTWin <- winning %>% filter(model == "GaussianUVSDT" & delAIC == 0) %>%
+  relocate(sigo, .after = muo) %>% .$condid
+
+alls <- fullsubj %>% 
+  group_by(exp,condid,model,oldnew) %>%
+  mutate(responseprop = freq/sum(freq))
+
+allresiduals <- NULL
+for(subjid in unique(alls$condid)){
+
+      datonly <- alls %>% filter(model == "Data") %>% 
+      ungroup() %>% filter(condid == subjid)
+    
+  
+    for (modelname in models) {
+
+      modelsprop <- alls %>% filter(model == modelname) %>%
+    
+        filter(condid == subjid) %>%
+        bind_cols(datprop = datonly$responseprop,
+                  datfreq = datonly$freq) %>%
+        mutate(residuals = responseprop - datprop)
+      
+      allresiduals <- allresiduals %>% bind_rows(modelsprop)
+    
+  }
+}
+
+allresiduals <- allresiduals %>% 
+  mutate(confidence = factor(confidence,levels = c(1:6))) %>% 
+  mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel")))
+  
+
+UVSDTpreds <- fullsubj %>%
+  select(exp,condid,id,condition,model,confidence,oldnew,zroc,roc,freq) %>%
+  pivot_wider(names_from = oldnew, values_from = c(roc,zroc,freq)) %>%
+  mutate(whowins = case_when(condid %in% GumbelWin ~ "Gumbel",
+                             condid %in% EVSDTWin ~ "EVSDT",
+                             condid %in% UVSDTWin  ~ "UVSDT",
+                             TRUE ~ "Else")) %>%
+  mutate(model = factor(model,levels = c(models,"Data"),labels = c("EVSDT","UVSDT","Gumbel","Data"))) %>%
+  mutate(whowins = factor(whowins,levels = c("EVSDT","UVSDT","Gumbel")))
+
+
+Datonly <- UVSDTpreds %>% filter(model == "Data")
+
+DatonlyLong <- Datonly  %>% select(exp,pred,condid,id,condition,model,confidence,freq_New,freq_Old,whowins) %>%
+  pivot_longer(!c(exp,condid,id,condition,model,confidence,whowins,pred),names_to="oldnew",values_to="freq") %>%
+  mutate(confidence = factor(confidence, levels = c(1:6))) %>%
+  mutate(oldnew = factor(oldnew,levels = c("freq_New","freq_Old"),labels = c("New","Old")))
+
+
+partable <- bestfit %>% 
+  select(model,exp,condid,id,condition,objective,convergence,muo,sigo,c1,dc1,dc2,dc3,dc4) %>%
+  pivot_longer(!c(exp,condid,id,condition,model),names_to="estimates",values_to="value") %>%
+  mutate(estimates = factor(estimates, levels = rev(c("objective","convergence",
+                                                "muo","sigo","c1","dc1","dc2","dc3","dc4"))))
+
+UVSDTpredsLong <- UVSDTpreds  %>% select(exp,condid,id,condition,model,pred,confidence,freq_New,freq_Old,whowins) %>%
+  pivot_longer(!c(exp,condid,id,condition,model,pred,confidence,whowins),names_to="oldnew",values_to="freq") %>%
+  mutate(confidence = factor(confidence, levels = c(1:6))) %>%
+  mutate(oldnew = factor(oldnew,levels = c("freq_New","freq_Old"),labels = c("New","Old")))
+
+
+
+
+# A: High Strength, high EV
+# B: High Strength, low EV
+# C: Low strength, high EV
+# D: Low Strength, low EV
+
+labelconditions <- tibble(condition = c("A","B","C","D"),
+                          conditionlabel = c("high strength, high variability",
+                                             "high strength, low variability",
+                                             "low strength, high variability",
+                                             "low strength, low variability"))
+
+
+```
+
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+
+allparticipants <- unique(fullsubj$condid)
+
+plots_list = list()
+
+for (i in seq_along(allparticipants)){
+  
+  subjid <- allparticipants[[i]]
+
+ind <- allfits %>% filter(condid == subjid) %>%
+  bind_rows(tibble(delAIC = 0,model="A",condid = subjid)) %>%
+  mutate(model = factor(model,levels = c("A",models),labels = c("Winning","EVSDT","UVSDT","Gumbel")))
+
+maxDelta <- max(allfits %>% filter(condid == subjid) %>% .$delAIC) + 5
+
+
+
+maxlim <- max(0.045,abs(allresiduals %>% filter(condid == subjid) %>% .$residuals)) + 0.005
+
+resids <- ggplot(allresiduals %>% filter(condid == subjid),
+       aes(x = confidence,y = residuals,color=model,fill=model,group=model,shape=model)) +
+  geom_hline(yintercept = 0) +
+  scale_y_continuous(limits = c(-maxlim,maxlim),name = "Residuals of response proportions")+
+  scale_color_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73")) +
+  scale_fill_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73")) +
+  scale_shape_manual(name = "Fitted Model", values = c(22,21,24))+
+  
+  geom_line(size = 1, position = position_dodge(width = .5))+
+  geom_point(size = 3, position = position_dodge(width = .5),color="black")+
+    facet_grid(oldnew~.) +
+  theme(axis.title.x = element_blank(),
+        axis.text.y = element_text(size=12),
+        #axis.ticks = element_blank(),
+        #legend.position = "none",
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        #legend.position = "none",
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+
+
+
+
+AICplot <- ggplot(ind,
+       aes(x = model, y = delAIC,fill=model)) +
+ geom_hline(yintercept = 1, linetype="dashed")+
+  geom_hline(yintercept = 2, linetype="dashed")+
+  geom_hline(yintercept = 0)+
+  geom_bar(stat = "identity") +
+  scale_fill_manual(name = "Fitted Model",values = c("#000000","#56B4E9","#E69F00","#009E73")) +
+  coord_cartesian(ylim = c(0,15))+
+  scale_y_continuous(limits = c(0,maxDelta),name = expression(paste(Delta, " AIC")),breaks=c(0,1,2,5,10,15)) +
+ 
+ scale_x_discrete()+
+  geom_text(data = ind, aes(x = 1,y = mean(maxDelta/2),
+                            label = paste(unique(ind %>% filter(delAIC == 0) %>% .$model %>% .[[1]]))),
+            size=5)+
+  theme(axis.title.x = element_blank(),
+    axis.text.y = element_text(size=12),
+    #axis.ticks = element_blank(),
+    legend.position = "none",
+    panel.background = element_rect(fill = "white"),
+    panel.border = element_rect(fill = "transparent",colour="black"),
+    strip.placement = "outside",
+    #legend.position = "none",
+    strip.background = element_rect(fill = "transparent",
+                                    colour="transparent"),
+    strip.text = element_text(size = 12))
+
+
+
+
+minscale <- min(Datonly %>% filter(condid == subjid) %>% .$zroc_New,
+                Datonly %>% filter(condid == subjid) %>% .$zroc_Old,
+                UVSDTpreds %>% filter(condid == subjid) %>% .$zroc_New,
+                UVSDTpreds %>% filter(condid == subjid) %>% .$zroc_Old,na.rm=T) - 0.2
+
+maxscale <- max(Datonly %>%  filter(condid == subjid) %>% .$zroc_New,
+                Datonly %>% filter(condid == subjid) %>% .$zroc_Old,
+                UVSDTpreds %>%  filter(condid == subjid) %>% .$zroc_New,
+                UVSDTpreds %>%  filter(condid == subjid) %>% .$zroc_Old,na.rm=T) + 0.2
+
+zroc <- ggplot(Datonly %>%  filter(condid == subjid),
+       aes(x = zroc_New,y = zroc_Old)) +
+  geom_point(data = UVSDTpreds %>% filter(model != "Data") %>% filter(condid == subjid),
+             aes(x = zroc_New,y = zroc_Old,color=model,shape=model),size=2)+
+  geom_abline(intercept=0,slope=1)+
+  geom_smooth(data = UVSDTpreds %>% filter(model != "Data") %>%
+               filter(condid == subjid),
+              aes(x = zroc_New,y = zroc_Old,color=model),size=1,
+              method="lm",formula = y ~ poly(x, 2), se = FALSE,fullrange=T)+
+  scale_color_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73")) +
+  #scale_fill_manual(name = "Winning Model",values = c("#56B4E9","#E69F00", "#009E73"))+
+  scale_shape_manual(name = "Fitted Model",values = c(16,15,17))+
+  geom_point(data = Datonly  %>% filter(condid == subjid),aes(x = zroc_New,y = zroc_Old), color= "black",size=3,shape=15)+
+  # geom_point(data = Datonly  %>% filter(condition == cond) %>% filter(id == subjid),aes(x = 2,y = -2,fill = whowins,shape = whowins),
+  #            size=4)+
+  scale_x_continuous(name = "z(fa)",limits = c(minscale,maxscale)) +
+  scale_y_continuous(name = "z(hit)",limits = c(minscale,maxscale)) +
+
+  theme(aspect.ratio=1,
+        axis.text = element_text(size=12),
+        #axis.ticks = element_blank(),
+        legend.position = c(0.7,0.2),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        #legend.position = "none",
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+
+
+
+confrating <- ggplot(data = DatonlyLong %>% filter(condid == subjid),
+       aes(y = freq,x = confidence)) +
+  geom_bar(stat="identity",color="black",fill="lightgrey") +
+  geom_point(data = UVSDTpredsLong %>% filter(model != "Data") %>% filter(condid == subjid),
+             aes(y = freq,x=confidence,fill=model,shape=model),
+             size=2,position=position_dodge(width=0.8))+
+  #geom_text(aes(label=round(freq)))+
+  scale_fill_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73"))+
+  scale_shape_manual(name = "Fitted Model",values = c(22,21,24))+
+  # scico::scale_fill_scico(palette = "bilbao")+
+  # scale_fill_gradient2(limits = c(0, 60),
+  #                      low = "white",high = "red") +
+  #
+  #
+  #geom_text(aes(label = round(delAIC)),size = 3.5) +
+  # scale_fill_manual(values = c("#ffff00","#000000","#ffffff","#ff0000","#00ff00","#0000ff"),
+  #                   labels = c("no responses","responses",NA,"Gumbel > 10","GaussianEVSDT > 10",
+  #                              "GaussianUVSDT > 10"))+
+  scale_y_continuous(limits = c(0,60)) +
+  #scale_y_discrete(labels = c("New","Old"))+
+  facet_grid(oldnew~.)+
+
+  theme(axis.title = element_blank(),
+        axis.text.y = element_text(size=12),
+        #axis.ticks = element_blank(),
+        legend.position = "none",
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        #legend.position = "none",
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+
+
+
+parametertable <-  ggplot(data = partable %>% filter(condid == subjid),
+         aes(y = model,x = estimates)) +
+  geom_tile(fill = "white",color="white") +
+  geom_text(aes(label=round(value,2)))+
+  scale_x_discrete(position = "bottom",labels = rev(c("-LL","con.",expression(mu[o]),expression(sigma[o]),"c1",
+                                               "dc1","dc2","dc3","dc4")))+
+    scale_y_discrete(position = "right",labels = c("EVSDT","UVSDT","Gumbel"))+
+    coord_flip()+
+  theme(axis.title = element_blank(),
+        axis.text.y = element_text(size=12),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        #legend.position = "none",
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+
+CondLabel <- labelconditions %>% filter(condition == str_sub(subjid,start=-1)) %>% .$conditionlabel
+
+
+title <- ggdraw() + 
+  draw_label(
+    paste0(str_sub(subjid,1,nchar(subjid)-2),", condition ",str_sub(subjid,start=-1), " (", CondLabel,")"),
+    fontface = 'bold',
+    x = 0,
+    hjust = 0
+  ) +
+  theme(
+    # add margin on the left of the drawing canvas,
+    # so title is aligned with left edge of first plot
+    plot.margin = margin(0, 0, 0, 7)
+  )
+
+
+plots <- plot_grid(AICplot,parametertable,zroc,confrating,resids,nrow=1,labels="AUTO",
+                   rel_widths=c(0.4,0.3,0.6,0.4,0.6))
+
+plots_list[[i]] <- plot_grid(title,plots,rel_heights = c(0.1,1),nrow=2)
+
+
+}
+
+```
+# SB2021_e2
+
+2 memory strength (low, high) x 2 encoding variability (low, high) within-subjects, between-blocks recognition memory design.
+
+* A: High Strength, high EV
+* B: High Strength, low EV
+* C: Low strength, high EV
+* D: Low Strength, low EV
+
+Individual-level plots of data, model fits and predictions of equal-variance Gaussian SDT (EVSDT, 6 parameters), unequal-variance Gaussian SDT (UVSDT, 7 parameters) and Gumbel SDT (Gumbel, 6 paraneters). 
+
+Split by condition, and winning-model (in tabs).
+
+Plots:
+
+* **A**: Comparison by Delta AIC, cut-off at 15
+* **B** : Parameter estimates (con. = nlminb convergence output)
+* **C**: zROC of data and model predictions (lines fitted by y = x^2). Note: scales vary by plot
+* **D**: frequency of responses observed (bars) and predicted (symbols)
+* **E**: residuals of predicted proportion of responses to observed data (+ means model predicts higher proportion of responses) in all response categories. Note: y-scale varies by plot
+
+
+
+## Condition A {.tabset} 
+
+High memory strength, High encoding variability
+
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+# find participants in condition A, B, C, D where EVSDTwin, UVSDTwin, Gumbelwin
+
+criticalEVSDT_index <- match(EVSDTWin[str_detect(EVSDTWin, "_A")],allparticipants)
+criticalUVSDT_index <- match(UVSDTWin[str_detect(UVSDTWin, "_A")],allparticipants)
+criticalGumbel_index <- match(GumbelWin[str_detect(GumbelWin, "_A")],allparticipants)
+
+```
+
+### EVSDT wins (N = ``r length(criticalEVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalEVSDT_index){
+
+  
+  cat("  \n")
+
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
+
+### UVSDT wins (N = ``r length(criticalUVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalUVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+
+}
+```
+
+### Gumbel wins (N = ``r length(criticalGumbel_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalGumbel_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+
+}
+```
+
+
+## Condition B {.tabset} 
+
+High memory strength, Low encoding variability
+
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+# find participants in condition A, B, C, D where EVSDTwin, UVSDTwin, Gumbelwin
+
+criticalEVSDT_index <- match(EVSDTWin[str_detect(EVSDTWin, "_B")],allparticipants)
+criticalUVSDT_index <- match(UVSDTWin[str_detect(UVSDTWin, "_B")],allparticipants)
+criticalGumbel_index <- match(GumbelWin[str_detect(GumbelWin, "_B")],allparticipants)
+
+```
+
+### EVSDT wins (N = ``r length(criticalEVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalEVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+
+}
+```
+
+### UVSDT wins (N = ``r length(criticalUVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+
+for(i in criticalUVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
+
+### Gumbel wins (N = ``r length(criticalGumbel_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalGumbel_index){
+  
+  cat("  \n")
+
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
+
+
+## Condition C {.tabset} 
+
+Low memory strength, high encoding variability
+
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+# find participants in condition A, B, C, D where EVSDTwin, UVSDTwin, Gumbelwin
+
+criticalEVSDT_index <- match(EVSDTWin[str_detect(EVSDTWin, "_C")],allparticipants)
+criticalUVSDT_index <- match(UVSDTWin[str_detect(UVSDTWin, "_C")],allparticipants)
+criticalGumbel_index <- match(GumbelWin[str_detect(GumbelWin, "_C")],allparticipants)
+
+```
+
+### EVSDT wins (N = ``r length(criticalEVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalEVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+
+}
+```
+
+### UVSDT wins (N = ``r length(criticalUVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+
+for(i in criticalUVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
+
+### Gumbel wins (N = ``r length(criticalGumbel_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalGumbel_index){
+  
+  cat("  \n")
+
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
+
+## Condition D {.tabset} 
+ 
+Low memory strength, low encoding variability
+
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE}
+
+# find participants in condition A, B, C, D where EVSDTwin, UVSDTwin, Gumbelwin
+
+criticalEVSDT_index <- match(EVSDTWin[str_detect(EVSDTWin, "_D")],allparticipants)
+criticalUVSDT_index <- match(UVSDTWin[str_detect(UVSDTWin, "_D")],allparticipants)
+criticalGumbel_index <- match(GumbelWin[str_detect(GumbelWin, "_D")],allparticipants)
+
+```
+
+### EVSDT wins (N = ``r length(criticalEVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalEVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+
+}
+```
+
+### UVSDT wins (N = ``r length(criticalUVSDT_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+
+for(i in criticalUVSDT_index){
+
+  cat("  \n")
+  
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
+
+### Gumbel wins (N = ``r length(criticalGumbel_index)``)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE,results="asis",fig.width = 18,fig.height=4}
+
+for(i in criticalGumbel_index){
+  
+  cat("  \n")
+
+  plot(plots_list[[i]])
+  
+  cat("  \n")
+  
+}
+```
