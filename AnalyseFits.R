@@ -12,14 +12,12 @@ models <- c("GumbelEVSDT","GumbelLargeEVSDT","GumbelNormEVSDT","ExGaussNormEVSDT
             "GumbelLargeNormEVSDT")
 for (model in models){
 
+
   for(subjid in unique(testphase$id)){
   # for(experiment in c("SB2021_e1","SB2021_e2")){
     fullsubj <- NULL
     for(cond in c("A","B","C","D")){
 
-      model <- models[[4]]
-      subjid <- "SB2021_e1_1"
-      cond <- "A"
 
       data <- testphase %>% filter(id == subjid) %>% filter(condition==cond)
 

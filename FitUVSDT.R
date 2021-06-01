@@ -157,9 +157,6 @@ optfunction <- function(model, data_list, par){
 
 gaussian_uvsdt_opt <- function(data_list,par,predictorLL){
 
-DataN <- data_list$New
-DataO <- data_list$Old
-
 d     <- par[1]
 sigo  <- par[2]
 c     <- vector()
@@ -175,24 +172,29 @@ I <- c(-Inf,c,Inf) # put criteria into larger array
 
 # Likelihood of every trial
 # New items
-NlikJ <- vector()
 pNlikJ <- vector()
 for (i in 1:length(DataN)){
   pNlikJ[i] <- pnorm(I[i+1],mean=0,sd=sign)-pnorm(I[i],mean=0,sd=sign)
-  NlikJ[i] <- DataN[i] * log( pNlikJ[i] )
 }
 
 # Old items
-OlikJ <- vector()
 pOlikJ <- vector()
 for (i in 1:length(DataO)){
 
   pOlikJ[i] <- pnorm(I[i+1],mean=d,sd=sigo)-pnorm(I[i],mean=d,sd=sigo)
-  OlikJ[i] <- DataO[i] * log( pOlikJ[i] )
 }
 
+
 if(predictorLL == "LL"){
+
+  DataN <- data_list$New
+  DataO <- data_list$Old
+
+  NlikJ <- DataN * log(pNlikJ)
+  OlikJ <- DataO * log(pOlikJ)
+
   return(sum(c(NlikJ,OlikJ)))
+
 } else {
   return(c(pNlikJ,pOlikJ))
 }
@@ -201,8 +203,6 @@ if(predictorLL == "LL"){
 }
 gaussian_evsdt_opt <- function(data_list,par,predictorLL){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
 
   d     <- par[1]
   sigo  <- 1
@@ -220,22 +220,27 @@ gaussian_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   NlikJ <- vector()
-  pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- pnorm(I[i+1],mean=0,sd=sign)-pnorm(I[i],mean=0,sd=sign)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i] )
   }
 
   # Old items
   pOlikJ <- vector()
-  OlikJ <- vector()
   for (i in 1:length(DataO)){
     pOlikJ[i] <- pnorm(I[i+1],mean=d,sd=sigo)-pnorm(I[i],mean=d,sd=sigo)
-    OlikJ[i] <- DataO[i] * log(pOlikJ[i])
   }
 
+
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
@@ -244,9 +249,6 @@ gaussian_evsdt_opt <- function(data_list,par,predictorLL){
 
 gumbel_evsdt_opt <- function(data_list,par,predictorLL){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
-
   d     <- par[1]
   sigo  <- 1
   c     <- vector()
@@ -262,33 +264,37 @@ gumbel_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
   pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=FALSE)-ordinal::pgumbel(I[i],location=0,scale=sign,max=FALSE)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
+
 
   }
 
 
   # Old items
-  OlikJ <- vector()
   pOlikJ <- vector()
   for (i in 1:length(DataO)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
-    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
+
   }
 
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
 }
 gumbelLarge_evsdt_opt <- function(data_list,par,predictorLL){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
 
   d     <- par[1]
   sigo  <- 1
@@ -305,34 +311,36 @@ gumbelLarge_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
   pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=T)-ordinal::pgumbel(I[i],location=0,scale=sign,max=T)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
 
   }
 
 
   # Old items
-  OlikJ <- vector()
   pOlikJ <- vector()
   for (i in 1:length(DataO)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=T)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=T)
-    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
   }
 
+
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
 } # large-extremes Gumbel
 gumbelNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
-
   d     <- par[1]
   sigo  <- 1
   c     <- vector()
@@ -348,33 +356,35 @@ gumbelNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
   pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
 
   }
 
   # Old items
-  OlikJ <- vector()
   pOlikJ <- vector()
   for (i in 1:length(DataO)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
-    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
   }
 
+
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
 } # new: pnorm, old: pgumbel small-extremes
 gumbelLargeNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
-
   d     <- par[1]
   sigo  <- 1
   c     <- vector()
@@ -390,33 +400,35 @@ gumbelLargeNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
   pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
 
   }
 
   # Old items
-  OlikJ <- vector()
   pOlikJ <- vector()
   for (i in 1:length(DataO)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=T)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=T)
-    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
   }
 
+
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
 } # new: pnrom, old: pgumbel large-extremes
 gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
-
   d     <- par[1]
   sigo  <- 1
   c     <- vector()
@@ -432,34 +444,36 @@ gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
   pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=TRUE)-ordinal::pgumbel(I[i],location=0,scale=sign,max=TRUE)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
 
   }
 
 
   # Old items
-  OlikJ <- vector()
   pOlikJ <- vector()
   for (i in 1:length(DataO)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
-    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
   }
 
+
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
 } #new: pgumbel Large, old: pgumbel Small
 
 exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
-
-  DataN <- data_list$New
-  DataO <- data_list$Old
 
   d     <- par[1]
   sigo  <- 1
@@ -477,35 +491,42 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
   pNlikJ <- vector()
   for (i in 1:length(DataN)){
     pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
-    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
 
   }
 
 
   # Old items
-  OlikJ <- vector()
   pOlikJ <- vector()
   for (i in 1:length(DataO)){
 
 
-    pOlikJ[i] <- brms::pexgaussian(I[i+1],mu=d,sigma=sigo,beta=betao) -
-      ifelse(is.na(brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao)),0,
-             brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao))
+    evaluateboundaryi <- brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao)
+    evaluateboundaryiplus <- brms::pexgaussian(I[i+1],mu=d,sigma=sigo,beta=betao)
+
+    pOlikJ[i] <- ifelse(is.na(evaluateboundaryiplus),0,evaluateboundaryiplus) -
+      ifelse(is.na(evaluateboundaryi),0,evaluateboundaryi)
 
     # this is a hack for quick test. pexGaussian(-Inf,mu,sigma,beta) evaluates to NaN while
     # pnorm(-Inf,mead,sd) evaluates to 0, so does pgumbel(-Inf,location,scale,max=F)
     # pexGaussian(Inf,mu,sigma,beta) evaluates to 1
 
 
-    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
   }
 
+
   if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
     return(sum(c(NlikJ,OlikJ)))
+
   } else {
     return(c(pNlikJ,pOlikJ))
   }
@@ -564,22 +585,50 @@ FitSDT <- function (data, model, rep = rep, startpar = NULL) {
 
 
 
-PredictSDT <- function(data, model, par){
+PredictSDT <- function(data = NULL, model, par, itemspertype = NULL){
+
+
+
+  if (is.null(data)){
+
+
+    # using rmultinom
+    # alternative: using sample(x,n,prob,replace=T) but unsampled categories are not listed in results
+
+    probs <- predict_frequencies(data_list = NULL, model = model, par = par)
+
+    predfreq <- c(rmultinom(c(1:6),itemspertype[[1]],prob = probs[1:6]),
+                  rmultinom(c(1:6),itemspertype[[2]],prob = probs[7:12]))
+
+    simulated <- tibble(freq = predfreq,
+                        oldnew = rep(c("New","Old"),each = 6),
+                        response = rep(c(1:6),2))
+
+    return(simulated)
+
+  } else {
 
   dp <- prep_data(data)
+  obsfreq<- c(dp$datalist$New,dp$datalist$Old)
 
-  predfreq <- predict_frequencies(data_list = dp$datalist, model = modelname, par = par) *
+  predfreq <- predict_frequencies(data_list = dp$datalist, model = model, par = par) *
     c(rep(dp$trialsNew,length(dp$confidence)),rep(dp$trialsOld,length(dp$confidence)))
 
   # Multiply each probability with the total number of new and old items
   # complicated here only to future-proof it for data sets with different numbers of targets/lures
 
-  obsfreq<- c(dp$datalist$New,dp$datalist$Old)
 
   return(list(
     predicted = predfreq,
     observed = obsfreq
   ))
+
+  }
+
+
+
+
+
 }
 
 predict_frequencies <- function(data_list,model,par){
