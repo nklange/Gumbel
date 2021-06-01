@@ -1,4 +1,5 @@
-library(ordinal)
+library(ordinal) #for Gumbel with small extremes (max = F)
+library(brms) #for ExGaussian
 
 prep_data <- function(data){
 
@@ -45,7 +46,7 @@ prep_data <- function(data){
 get_start_par <- function(model){
 
 
-  if (model %in% c("GaussianUVSDT","LaplaceUVSDT")){
+  if (model %in% c("GaussianUVSDT")){
     pstartunif <- tibble(
       muo   = runif(1, min=0, max=3),
       sigo = runif(1, min=1, max=4),
@@ -58,7 +59,7 @@ get_start_par <- function(model){
 
     pstart <- bind_rows(pstartunif)
 
-  } else if (model %in% c("GaussianEVSDT","GumbelEVSDT","GumbelFlipEVSDT","LaplaceEVSDT")){
+  } else if (model %in% c("GaussianEVSDT","GumbelLargeEVSDT","GumbelLargeNormEVSDT")){
     pstartunif <- tibble(
       muo    = runif(1, min=0, max=3),
       c1   = runif(1, min=-2, max=0),
@@ -70,7 +71,7 @@ get_start_par <- function(model){
 
     pstart <- bind_rows(pstartunif)
 
-  } else if (model %in% c("GumbelEVSDT","GumbelFlipEVSDT")){
+  } else if (model %in% c("GumbelEVSDT","GumbelFlipEVSDT","GumbelNormEVSDT")){
     pstartunif <- tibble(
       muo    = runif(1, min=-3, max=0),
       c1   = runif(1, min=-2, max=0),
@@ -82,27 +83,50 @@ get_start_par <- function(model){
 
     pstart <- bind_rows(pstartunif)
 
+  }   else if (model %in% c("ExGaussNormEVSDT")){
+      pstartunif <- tibble(
+        muo   = runif(1, min=0, max=3),
+        betao = runif(1, min=1, max=3),
+        c1   = runif(1, min=-2, max=0),
+        dc1  = runif(1, min=0, max=1),
+        dc2  = runif(1, min=0, max=1),
+        dc3  = runif(1, min=0, max=1),
+        dc4  = runif(1, min=0, max=1)
+      )
+
+      pstart <- bind_rows(pstartunif)
+
   }
 
  return(pstart)
 }
+
 get_par_limits <- function(model){
 
-  if (model %in% c("GaussianUVSDT","LaplaceUVSDT")){
+  if (model %in% c("GaussianUVSDT")){
       # "d"    "sigo" "c1"   "dc1"  "dc2"  "dc3"  "dc4"
 
     lower <- c(-Inf, .Machine$double.eps,-Inf, .Machine$double.eps,
                .Machine$double.eps, .Machine$double.eps, .Machine$double.eps)
     upper <- Inf
 
-  } else if (model %in% c("GaussianEVSDT","GumbelEVSDT","GumbelFlipEVSDT","LaplaceEVSDT")){
+  } else if (model %in% c("GaussianEVSDT","GumbelEVSDT","GumbelFlipEVSDT",
+                          "GumbelNormEVSDT","GumbelLargeEVSDT","GumbelLargeNormEVSDT")){
       # "d"  "c1"   "dc1"  "dc2"  "dc3"  "dc4"
 
       lower <- c(-Inf,-Inf, .Machine$double.eps,
                  .Machine$double.eps, .Machine$double.eps, .Machine$double.eps)
       upper <- Inf
 
+  } else if (model %in% c("ExGaussNormEVSDT")){
+    # "d" "betao" "c1"   "dc1"  "dc2"  "dc3"  "dc4"
+
+    lower <- c(-Inf,.Machine$double.eps,-Inf, .Machine$double.eps,
+               .Machine$double.eps, .Machine$double.eps, .Machine$double.eps)
+    upper <- Inf
+
   }
+
 
   list(lower,upper)
 }
@@ -113,10 +137,18 @@ optfunction <- function(model, data_list, par){
     out <- gaussian_uvsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
   } else if(model %in% c("GumbelEVSDT")){
     out <- gumbel_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
-  } else if(model %in% c("GumbelFlipEVSDT")){
-    out <- gumbelFlip_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
+  } else if(model %in% c("GumbelLargeEVSDT")){
+    out <- gumbelLarge_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
   } else if(model %in% c("GaussianEVSDT")){
     out <- gaussian_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
+  }  else if(model %in% c("GumbelFlipEVSDT")){
+    out <- gumbelFlip_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
+  } else if(model %in% c("GumbelNormEVSDT")){
+    out <- gumbelNorm_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
+  } else if(model %in% c("GumbelLargeNormEVSDT")){
+    out <- gumbelLargeNorm_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
+  } else if(model %in% c("ExGaussNormEVSDT")){
+    out <- exGaussNorm_evsdt_opt(data_list = data_list,par = par,predictorLL = "LL")
   }
 
   return(-out)
@@ -237,7 +269,7 @@ gumbel_evsdt_opt <- function(data_list,par,predictorLL){
     NlikJ[i] <- DataN[i] * log(pNlikJ[i])
 
   }
-ordinal::pgumbel
+
 
   # Old items
   OlikJ <- vector()
@@ -253,6 +285,133 @@ ordinal::pgumbel
     return(c(pNlikJ,pOlikJ))
   }
 }
+gumbelLarge_evsdt_opt <- function(data_list,par,predictorLL){
+
+  DataN <- data_list$New
+  DataO <- data_list$Old
+
+  d     <- par[1]
+  sigo  <- 1
+  c     <- vector()
+  c[1]  <- par[2]
+  c[2]  <- c[1] + par[3]
+  c[3]  <- c[2] + par[4]
+  c[4]  <- c[3] + par[5]
+  c[5]  <- c[4] + par[6]
+
+  # Constraints
+  sign  <- 1
+  I <- c(-Inf,c,Inf) # put criteria into larger array
+
+  # Likelihood of every trial
+  # New items
+  NlikJ <- vector()
+  pNlikJ <- vector()
+  for (i in 1:length(DataN)){
+    pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=T)-ordinal::pgumbel(I[i],location=0,scale=sign,max=T)
+    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
+
+  }
+
+
+  # Old items
+  OlikJ <- vector()
+  pOlikJ <- vector()
+  for (i in 1:length(DataO)){
+    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=T)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=T)
+    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
+  }
+
+  if(predictorLL == "LL"){
+    return(sum(c(NlikJ,OlikJ)))
+  } else {
+    return(c(pNlikJ,pOlikJ))
+  }
+} # large-extremes Gumbel
+gumbelNorm_evsdt_opt <- function(data_list,par,predictorLL){
+
+  DataN <- data_list$New
+  DataO <- data_list$Old
+
+  d     <- par[1]
+  sigo  <- 1
+  c     <- vector()
+  c[1]  <- par[2]
+  c[2]  <- c[1] + par[3]
+  c[3]  <- c[2] + par[4]
+  c[4]  <- c[3] + par[5]
+  c[5]  <- c[4] + par[6]
+
+  # Constraints
+  sign  <- 1
+  I <- c(-Inf,c,Inf) # put criteria into larger array
+
+  # Likelihood of every trial
+  # New items
+  NlikJ <- vector()
+  pNlikJ <- vector()
+  for (i in 1:length(DataN)){
+    pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
+    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
+
+  }
+
+  # Old items
+  OlikJ <- vector()
+  pOlikJ <- vector()
+  for (i in 1:length(DataO)){
+    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
+    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
+  }
+
+  if(predictorLL == "LL"){
+    return(sum(c(NlikJ,OlikJ)))
+  } else {
+    return(c(pNlikJ,pOlikJ))
+  }
+} # new: pnorm, old: pgumbel small-extremes
+gumbelLargeNorm_evsdt_opt <- function(data_list,par,predictorLL){
+
+  DataN <- data_list$New
+  DataO <- data_list$Old
+
+  d     <- par[1]
+  sigo  <- 1
+  c     <- vector()
+  c[1]  <- par[2]
+  c[2]  <- c[1] + par[3]
+  c[3]  <- c[2] + par[4]
+  c[4]  <- c[3] + par[5]
+  c[5]  <- c[4] + par[6]
+
+  # Constraints
+  sign  <- 1
+  I <- c(-Inf,c,Inf) # put criteria into larger array
+
+  # Likelihood of every trial
+  # New items
+  NlikJ <- vector()
+  pNlikJ <- vector()
+  for (i in 1:length(DataN)){
+    pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
+    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
+
+  }
+
+  # Old items
+  OlikJ <- vector()
+  pOlikJ <- vector()
+  for (i in 1:length(DataO)){
+    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=T)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=T)
+    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
+  }
+
+  if(predictorLL == "LL"){
+    return(sum(c(NlikJ,OlikJ)))
+  } else {
+    return(c(pNlikJ,pOlikJ))
+  }
+} # new: pnrom, old: pgumbel large-extremes
 gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
 
   DataN <- data_list$New
@@ -295,7 +454,62 @@ gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
   } else {
     return(c(pNlikJ,pOlikJ))
   }
-}
+} #new: pgumbel Large, old: pgumbel Small
+
+exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
+
+  DataN <- data_list$New
+  DataO <- data_list$Old
+
+  d     <- par[1]
+  sigo  <- 1
+  betao <- par[2]
+  c     <- vector()
+  c[1]  <- par[3]
+  c[2]  <- c[1] + par[4]
+  c[3]  <- c[2] + par[5]
+  c[4]  <- c[3] + par[6]
+  c[5]  <- c[4] + par[7]
+
+  # Constraints
+  sign  <- 1
+  I <- c(-Inf,c,Inf) # put criteria into larger array
+
+  # Likelihood of every trial
+  # New items
+  NlikJ <- vector()
+  pNlikJ <- vector()
+  for (i in 1:length(DataN)){
+    pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
+    NlikJ[i] <- DataN[i] * log(pNlikJ[i])
+
+  }
+
+
+  # Old items
+  OlikJ <- vector()
+  pOlikJ <- vector()
+  for (i in 1:length(DataO)){
+
+
+    pOlikJ[i] <- brms::pexgaussian(I[i+1],mu=d,sigma=sigo,beta=betao) -
+      ifelse(is.na(brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao)),0,
+             brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao))
+
+    # this is a hack for quick test. pexGaussian(-Inf,mu,sigma,beta) evaluates to NaN while
+    # pnorm(-Inf,mead,sd) evaluates to 0, so does pgumbel(-Inf,location,scale,max=F)
+    # pexGaussian(Inf,mu,sigma,beta) evaluates to 1
+
+
+    OlikJ[i] <- DataO[i] * log( pOlikJ[i])
+  }
+
+  if(predictorLL == "LL"){
+    return(sum(c(NlikJ,OlikJ)))
+  } else {
+    return(c(pNlikJ,pOlikJ))
+  }
+} #new: pnorm, old: exgaussian
 
 
 fit_nlminb <- function(data, model, rep, startpar){
@@ -373,12 +587,20 @@ predict_frequencies <- function(data_list,model,par){
   out <- vector()
   if(model %in% c("GaussianUVSDT")){
     out <- gaussian_uvsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
-  } else if(model %in% c("LaplaceUVSDT")){
-    out <- laplace_uvsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
   } else if(model %in% c("GumbelEVSDT")){
     out <- gumbel_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
+  } else if(model %in% c("GumbelLargeEVSDT")){
+    out <- gumbelLarge_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
   } else if(model %in% c("GaussianEVSDT")){
     out <- gaussian_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
+  }  else if(model %in% c("GumbelFlipEVSDT")){
+    out <- gumbelFlip_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
+  } else if(model %in% c("GumbelNormEVSDT")){
+    out <- gumbelNorm_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
+  } else if(model %in% c("GumbelLargeNormEVSDT")){
+    out <- gumbelLargeNorm_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
+  } else if(model %in% c("ExGaussNormEVSDT")){
+    out <- exGaussNorm_evsdt_opt(data_list = data_list,par = par,predictorLL = "predict")
   }
 
   return(out)

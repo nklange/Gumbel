@@ -21,9 +21,9 @@ selecttest <- experimentfile %>% filter(phase == "test") %>%
   select(exp,id,condition,conditionorders,test_word,oldnew,response)
 
 demographics <- selecttest %>% group_by(exp,id) %>%
-  slice_tail(n=3) %>% select(-oldnew)
+  dplyr::slice_tail(n=3) %>% select(-oldnew)
 
-testphase <- selecttest %>% group_by(exp,id) %>% slice(1:480) %>% mutate(trial = c(1:480)) %>%
+testphase <- selecttest %>% group_by(exp,id) %>% dplyr::slice(1:480) %>% mutate(trial = c(1:480)) %>%
   mutate(oldnew = ifelse(oldnew == 0,"New","Old"))
 
 # A: High Strength, high EV
