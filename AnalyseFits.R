@@ -21,7 +21,7 @@ for (model in models){
 
       data <- testphase %>% filter(id == subjid) %>% filter(condition==cond)
 
-      fit <- FitSDT(data = data, model = model, rep=20) %>% mutate(condition = cond)
+      fit <- FitSDT(data = data, model = model, rep=20, freqdat = F) %>% mutate(condition = cond)
 
       fullsubj <- fullsubj %>% bind_rows(fit)
     }

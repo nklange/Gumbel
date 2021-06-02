@@ -1,18 +1,28 @@
 library(ordinal) #for Gumbel with small extremes (max = F)
 library(brms) #for ExGaussian
 
-prep_data <- function(data){
+prep_data <- function(data,freqdat){
 
-  preprepdat <- data %>% group_by(oldnew,response) %>%
-    summarize(Freq = length(response)) %>%
-    mutate(oldnew = factor(oldnew,levels = c("New","Old")),
-           response = factor(response, levels = c(1,2,3,4,5,6)))
+  if(freqdat){
 
-  fullresp <- preprepdat %>% expand(response)
+    prepdat <- data %>%
+      mutate(Freq = ifelse(is.na(Freq),1/6,Freq)) %>%
+      arrange(oldnew,response)
 
-  prepdat <- preprepdat %>% right_join(fullresp) %>%
-    mutate(Freq = ifelse(is.na(Freq),1/6,Freq)) %>%
-    arrange(oldnew,response)
+  } else {
+
+    preprepdat <- data %>% group_by(oldnew,response) %>%
+      summarize(Freq = length(response)) %>%
+      mutate(oldnew = factor(oldnew,levels = c("New","Old")),
+             response = factor(response, levels = c(1,2,3,4,5,6)))
+
+    fullresp <- preprepdat %>% expand(response)
+
+    prepdat <- preprepdat %>% right_join(fullresp) %>%
+      mutate(Freq = ifelse(is.na(Freq),1/6,Freq)) %>%
+      arrange(oldnew,response)
+
+  }
 
   dl <- split(prepdat$Freq, f = prepdat$oldnew)
   trialsNew <- sum(prepdat %>% filter(oldnew == "New") %>% .$Freq)
@@ -84,27 +94,27 @@ get_start_par <- function(model){
     pstart <- bind_rows(pstartunif)
 
   }   else if (model %in% c("ExGaussNormEVSDT")){
-      pstartunif <- tibble(
-        muo   = runif(1, min=0, max=3),
-        betao = runif(1, min=1, max=3),
-        c1   = runif(1, min=-2, max=0),
-        dc1  = runif(1, min=0, max=1),
-        dc2  = runif(1, min=0, max=1),
-        dc3  = runif(1, min=0, max=1),
-        dc4  = runif(1, min=0, max=1)
-      )
+    pstartunif <- tibble(
+      muo   = runif(1, min=0, max=3),
+      betao = runif(1, min=1, max=3),
+      c1   = runif(1, min=-2, max=0),
+      dc1  = runif(1, min=0, max=1),
+      dc2  = runif(1, min=0, max=1),
+      dc3  = runif(1, min=0, max=1),
+      dc4  = runif(1, min=0, max=1)
+    )
 
-      pstart <- bind_rows(pstartunif)
+    pstart <- bind_rows(pstartunif)
 
   }
 
- return(pstart)
+  return(pstart)
 }
 
 get_par_limits <- function(model){
 
   if (model %in% c("GaussianUVSDT")){
-      # "d"    "sigo" "c1"   "dc1"  "dc2"  "dc3"  "dc4"
+    # "d"    "sigo" "c1"   "dc1"  "dc2"  "dc3"  "dc4"
 
     lower <- c(-Inf, .Machine$double.eps,-Inf, .Machine$double.eps,
                .Machine$double.eps, .Machine$double.eps, .Machine$double.eps)
@@ -112,11 +122,11 @@ get_par_limits <- function(model){
 
   } else if (model %in% c("GaussianEVSDT","GumbelEVSDT","GumbelFlipEVSDT",
                           "GumbelNormEVSDT","GumbelLargeEVSDT","GumbelLargeNormEVSDT")){
-      # "d"  "c1"   "dc1"  "dc2"  "dc3"  "dc4"
+    # "d"  "c1"   "dc1"  "dc2"  "dc3"  "dc4"
 
-      lower <- c(-Inf,-Inf, .Machine$double.eps,
-                 .Machine$double.eps, .Machine$double.eps, .Machine$double.eps)
-      upper <- Inf
+    lower <- c(-Inf,-Inf, .Machine$double.eps,
+               .Machine$double.eps, .Machine$double.eps, .Machine$double.eps)
+    upper <- Inf
 
   } else if (model %in% c("ExGaussNormEVSDT")){
     # "d" "betao" "c1"   "dc1"  "dc2"  "dc3"  "dc4"
@@ -155,49 +165,53 @@ optfunction <- function(model, data_list, par){
 }
 
 
+
 gaussian_uvsdt_opt <- function(data_list,par,predictorLL){
 
-d     <- par[1]
-sigo  <- par[2]
-c     <- vector()
-c[1]  <- par[3]
-c[2]  <- c[1] + par[4]
-c[3]  <- c[2] + par[5]
-c[4]  <- c[3] + par[6]
-c[5]  <- c[4] + par[7]
-
-# Constraints
-sign  <- 1
-I <- c(-Inf,c,Inf) # put criteria into larger array
-
-# Likelihood of every trial
-# New items
-pNlikJ <- vector()
-for (i in 1:length(DataN)){
-  pNlikJ[i] <- pnorm(I[i+1],mean=0,sd=sign)-pnorm(I[i],mean=0,sd=sign)
-}
-
-# Old items
-pOlikJ <- vector()
-for (i in 1:length(DataO)){
-
-  pOlikJ[i] <- pnorm(I[i+1],mean=d,sd=sigo)-pnorm(I[i],mean=d,sd=sigo)
-}
 
 
-if(predictorLL == "LL"){
 
-  DataN <- data_list$New
-  DataO <- data_list$Old
+  d     <- par[1]
+  sigo  <- par[2]
+  c     <- vector()
+  c[1]  <- par[3]
+  c[2]  <- c[1] + par[4]
+  c[3]  <- c[2] + par[5]
+  c[4]  <- c[3] + par[6]
+  c[5]  <- c[4] + par[7]
 
-  NlikJ <- DataN * log(pNlikJ)
-  OlikJ <- DataO * log(pOlikJ)
+  # Constraints
+  sign  <- 1
+  I <- c(-Inf,c,Inf) # put criteria into larger array
 
-  return(sum(c(NlikJ,OlikJ)))
+  # Likelihood of every trial
+  # New items
+  pNlikJ <- vector()
+  for (i in 1:(length(c)+1)){
+    pNlikJ[i] <- pnorm(I[i+1],mean=0,sd=sign)-pnorm(I[i],mean=0,sd=sign)
+  }
 
-} else {
-  return(c(pNlikJ,pOlikJ))
-}
+  # Old items
+  pOlikJ <- vector()
+  for (i in 1:(length(c)+1)){
+
+    pOlikJ[i] <- pnorm(I[i+1],mean=d,sd=sigo)-pnorm(I[i],mean=d,sd=sigo)
+  }
+
+
+  if(predictorLL == "LL"){
+
+    DataN <- data_list$New
+    DataO <- data_list$Old
+
+    NlikJ <- DataN * log(pNlikJ)
+    OlikJ <- DataO * log(pOlikJ)
+
+    return(sum(c(NlikJ,OlikJ)))
+
+  } else {
+    return(c(pNlikJ,pOlikJ))
+  }
 
 
 }
@@ -220,13 +234,13 @@ gaussian_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   NlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- pnorm(I[i+1],mean=0,sd=sign)-pnorm(I[i],mean=0,sd=sign)
   }
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
     pOlikJ[i] <- pnorm(I[i+1],mean=d,sd=sigo)-pnorm(I[i],mean=d,sd=sigo)
   }
 
@@ -265,7 +279,7 @@ gumbel_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   pNlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=FALSE)-ordinal::pgumbel(I[i],location=0,scale=sign,max=FALSE)
 
 
@@ -274,7 +288,7 @@ gumbel_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
 
   }
@@ -312,7 +326,7 @@ gumbelLarge_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   pNlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=T)-ordinal::pgumbel(I[i],location=0,scale=sign,max=T)
 
   }
@@ -320,7 +334,7 @@ gumbelLarge_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=T)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=T)
   }
 
@@ -357,14 +371,14 @@ gumbelNorm_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   pNlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
 
   }
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
   }
 
@@ -401,14 +415,14 @@ gumbelLargeNorm_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   pNlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
 
   }
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=T)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=T)
   }
 
@@ -445,7 +459,7 @@ gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   pNlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=TRUE)-ordinal::pgumbel(I[i],location=0,scale=sign,max=TRUE)
 
   }
@@ -453,7 +467,7 @@ gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
     pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
   }
 
@@ -492,7 +506,7 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
   # Likelihood of every trial
   # New items
   pNlikJ <- vector()
-  for (i in 1:length(DataN)){
+  for (i in 1:(length(c)+1)){
     pNlikJ[i] <- pnorm(I[i+1],0,sign)-pnorm(I[i],0,sign)
 
   }
@@ -500,7 +514,7 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Old items
   pOlikJ <- vector()
-  for (i in 1:length(DataO)){
+  for (i in 1:(length(c)+1)){
 
 
     evaluateboundaryi <- brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao)
@@ -533,10 +547,10 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
 } #new: pnorm, old: exgaussian
 
 
-fit_nlminb <- function(data, model, rep, startpar){
+fit_nlminb <- function(data, model, rep, startpar, freqdat){
 
 
-  dp <- prep_data(data)
+  dp <- prep_data(data,freqdat)
   out_list <- vector("list",rep)
 
   if (is.null(startpar)) {
@@ -577,8 +591,10 @@ fit_nlminb <- function(data, model, rep, startpar){
   dplyr::bind_rows(out_list)
 }
 
-FitSDT <- function (data, model, rep = rep, startpar = NULL) {
-  res <- fit_nlminb(data = data, rep = rep, model = model, startpar = startpar)
+FitSDT <- function (data, model, rep = rep, startpar = NULL, freqdat = F) {
+
+  res <- fit_nlminb(data = data, rep = rep, model = model, startpar = startpar, freqdat = freqdat)
+
   return(res)
 }
 
@@ -600,7 +616,7 @@ PredictSDT <- function(data = NULL, model, par, itemspertype = NULL){
     predfreq <- c(rmultinom(c(1:6),itemspertype[[1]],prob = probs[1:6]),
                   rmultinom(c(1:6),itemspertype[[2]],prob = probs[7:12]))
 
-    simulated <- tibble(freq = predfreq,
+    simulated <- tibble(Freq = predfreq,
                         oldnew = rep(c("New","Old"),each = 6),
                         response = rep(c(1:6),2))
 
@@ -608,20 +624,20 @@ PredictSDT <- function(data = NULL, model, par, itemspertype = NULL){
 
   } else {
 
-  dp <- prep_data(data)
-  obsfreq<- c(dp$datalist$New,dp$datalist$Old)
+    dp <- prep_data(data)
+    obsfreq<- c(dp$datalist$New,dp$datalist$Old)
 
-  predfreq <- predict_frequencies(data_list = dp$datalist, model = model, par = par) *
-    c(rep(dp$trialsNew,length(dp$confidence)),rep(dp$trialsOld,length(dp$confidence)))
+    predfreq <- predict_frequencies(data_list = dp$datalist, model = model, par = par) *
+      c(rep(dp$trialsNew,length(dp$confidence)),rep(dp$trialsOld,length(dp$confidence)))
 
-  # Multiply each probability with the total number of new and old items
-  # complicated here only to future-proof it for data sets with different numbers of targets/lures
+    # Multiply each probability with the total number of new and old items
+    # complicated here only to future-proof it for data sets with different numbers of targets/lures
 
 
-  return(list(
-    predicted = predfreq,
-    observed = obsfreq
-  ))
+    return(list(
+      predicted = predfreq,
+      observed = obsfreq
+    ))
 
   }
 

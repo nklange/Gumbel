@@ -28,7 +28,7 @@ bestfit <- fits %>%
   dplyr::slice(1)
 
 
-bestfit %>%
+datas <- bestfit %>%
   filter(model %in% c("GumbelEVSDT")) %>% group_by(condition) %>%
   filter(muo > mean(muo) - 3 * sd(muo)) %>%
   mutate(strength = ifelse((condition == "A" | condition == "B"), "high","low"),
@@ -37,14 +37,86 @@ bestfit %>%
   select(c(model,id,condition,muo,c1,dc1,dc2,dc3,dc4)) %>% ungroup() %>%
   pivot_longer(!c(exp,model,id,condition),names_to = "parameter",values_to="value") %>%
   group_by(parameter) %>%
-  summarize(mpar = mean(value),
-            sdpar = sd(value))
+  filter(value < quantile(value,.975) & value > quantile(value,.025)) %>%
+  spread(parameter,value) %>%
+  drop_na() %>%
+  select(-c(exp,model,id,condition)) %>%
+  select(names(get_start_par("GumbelEVSDT")))
 
-# make generating parameters sampling from multivariatenormal
+# for each model: identify mean/sd of paramaters and correlations between them
 
+correlations <- cor(datas)
+means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
+sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1])
+sigmas <- sds %*% t(sds) * correlations
+
+# Use multivariate to generate parameters on basis of multivariate distribution
+# Sample 1000 possible sets of generating parameters per model
+
+set.seed(1)
+parameters <- tmvtnorm::rtmvnorm(n=1000, mean = means, sigma=sigmas,
+                                 lower=c(-Inf,-Inf,0,0,0,0),
+                                 upper=rep(Inf,length(means)),
+                                 algorithm="gibbs",
+                                 burn.in.samples=1000,
+                                 thinning = 100)
 
 
 # Simulate from Gumbel and fit with UVSDT
 
-PredictSDT(data = NULL, model = "GumbelEVSDT",par = c(-1.12,-1.74,1.20,.7,.45,.53),
-           itemspertype = c(100,100) )
+genmodel <- "GumbelEVSDT"
+
+simulation <- NULL
+parametertibble <- NULL
+
+for(i in c(1:1000)){
+
+id <- paste0("gen",genmodel,"_par",i,"_set1")
+parid <- paste0("gen",genmodel,"_par",i)
+pars <- parameters[i,]
+
+
+sim <- PredictSDT(data = NULL, model = "GumbelEVSDT",par = pars,
+           itemspertype = c(5e4,5e4))
+
+# itemspertype choice as high enough where parameter recovery is pretty spot-on.
+
+simtibble <- sim %>% mutate(id = id,
+                            parid = parid,
+               genmodel = genmodel)
+
+partibble <- tibble(value = pars,
+                    parameter = names(get_start_par(genmodel))) %>%
+  mutate(parid = parid,
+         genmodel = genmodel)
+
+simulation <- simulation %>% bind_rows(simtibble)
+parametertibble <- parametertibble %>% bind_rows(partibble)
+
+}
+
+#saveRDS(simulation,file="simulate_genGumbelEVSDT_data_trials100k.rds")
+#saveRDS(parametertibble,file="simulate_genGumbelEVSDT_parametervalues.rds")
+library("doParallel")
+library("foreach")
+
+doParallel::registerDoParallel(cores=16)
+mcoptions <- list(preschedule=FALSE, set.seed=FALSE)
+model <- "GumbelEVSDT"
+model <- "GaussianUVSDT"
+
+res <- foreach(subjid = unique(simulation %>% .$id)
+               ,.combine = 'rbind'
+               ,.options.multicore=mcoptions) %dopar% {
+
+                 fitted <- FitSDT(simulation %>% filter(id=="genGumbelEVSDT_par1_set1"),
+                                  model,rep=20,freqdat=T)
+
+        saveRDS(fitted, file = paste0("FitsSimulation/", subjid, "_", model, ".rds"))
+               }
+
+
+
+
+
+
