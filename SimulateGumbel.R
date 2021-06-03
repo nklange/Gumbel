@@ -71,13 +71,15 @@ parametertibble <- NULL
 
 for(i in c(1:1000)){
 
-id <- paste0("gen",genmodel,"_par",i,"_set1")
+  for(j in c(2:101)){
+
+id <- paste0("gen",genmodel,"_par",i,"_set",j)
 parid <- paste0("gen",genmodel,"_par",i)
 pars <- parameters[i,]
 
 
 sim <- PredictSDT(data = NULL, model = "GumbelEVSDT",par = pars,
-           itemspertype = c(5e4,5e4))
+           itemspertype = c(200,200))
 
 # itemspertype choice as high enough where parameter recovery is pretty spot-on.
 
@@ -95,7 +97,9 @@ parametertibble <- parametertibble %>% bind_rows(partibble)
 
 }
 
-#saveRDS(simulation,file="simulate_genGumbelEVSDT_data_trials100k.rds")
+}
+
+saveRDS(simulation,file="simulate_genGumbelEVSDT_data_trials400.rds")
 #saveRDS(parametertibble,file="simulate_genGumbelEVSDT_parametervalues.rds")
 library("doParallel")
 library("foreach")
