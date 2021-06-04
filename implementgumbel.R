@@ -1,8 +1,7 @@
 # checking wikipedia parameterizations for pdf/cdf of gumbel and exgauss against
 # packages
 
-# Note: mu in gumbel is location parameter, mean is mu + scale*constant -> in
-# interpretation of mu = dprime in equal-scale model this makes no difference
+# Note: mu in gumbel is location parameter, mean is mu + scale*-digamma(1) (mascheroni constant)
 
 # mu in brms::pexgauss is
 # mu_input = location (mu of gaussian component) + scale (inverse rate, exp component)
@@ -98,9 +97,11 @@ pexgaus_manual <- function(x,mu,sigma,lambda){
 
 }
 
-# if x goes towards -Inf, brms goes to NaN
-# in the manual implementation only seems to happen at -Inf exactly, otherwise 0
+# if x goes towards -Inf (i.e., gets towards -1e5-ish onwards), brms:pex evaluates to NaN
+# in the manual implementation only seems to happen at -Inf exactly, otherwise
+# evaluates to 0
 
 pexgaus_manual(x,mu = eta,sigma,lambda) # standard parameterization
 brms::pexgaussian(x,mu,sigma,beta)
+
 
