@@ -1,6 +1,7 @@
 library("RColorBrewer")
 library("ggplot2")
 library("cowplot")
+library("stringr")
 
 source("preprocess_data.R")
 source("FitUVSDT.R")
@@ -185,38 +186,6 @@ bestfit <- fits %>%
   group_by(model,id) %>%
   arrange(objective) %>%
   dplyr::slice(1)
-
-
-
-lm_eqn_poly3 <- function(df){
-  m <- lm(sigo ~ muo + I(muo^2) + I(muo^3), df);
-  eq <- substitute(sigma[o] == a + b %.% mu[o] + c %.% mu[o]^2 + d %.% mu[o]^3*","~~italic(R)^2~"="~r2,
-                   list(a = format(unname(coef(m)[1]), digits = 2),
-                        b = format(unname(coef(m)[2]), digits = 2),
-                        c = format(unname(coef(m)[3]), digits = 2),
-                        d = format(unname(coef(m)[4]), digits = 2),
-                        r2 = format(summary(m)$r.squared, digits = 3)))
-  as.character(as.expression(eq));
-}
-
-lm_eqn_poly2 <- function(df){
-  m <- lm(sigo ~ muo + I(muo^2), df);
-  eq <- substitute(sigma[o] == a + b %.% mu[o] + c %.% mu[o]^2*","~~italic(R)^2~"="~r2,
-                   list(a = format(unname(coef(m)[1]), digits = 2),
-                        b = format(unname(coef(m)[2]), digits = 2),
-                        c = format(unname(coef(m)[3]), digits = 2),
-                        r2 = format(summary(m)$r.squared, digits = 3)))
-  as.character(as.expression(eq));
-}
-
-lm_eqn_poly1 <- function(df){
-  m <- lm(sigo ~ muo, df);
-  eq <- substitute(sigma[o] == a + b %.% mu[o]*","~~italic(R)^2~"="~r2,
-                   list(a = format(unname(coef(m)[1]), digits = 2),
-                        b = format(unname(coef(m)[2]), digits = 2),
-                        r2 = format(summary(m)$r.squared, digits = 3)))
-  as.character(as.expression(eq));
-}
 
 
 # Analyse correlation r(mu_o, sig_o) in UVSDT fits of Gumbel-generated data
@@ -495,9 +464,41 @@ mvnstandardparameters <- plot_grid(uvsdtmuosigo,muoestimateall,muoestimateconver
 # 10 bins, each with 200 data sets, to cover mu_gen of 0 - 5
 ################################################################################
 
-fits <- load_files("FitsSimulationExt/","gen")
 
-bestfit <- fits %>%
+
+lm_eqn_poly3 <- function(df){
+  m <- lm(sigo ~ muo + I(muo^2) + I(muo^3), df);
+  eq <- substitute(sigma[o] == a + b %.% d*"'"* + c %.% d*"'"^2* + e %.% d*"'"^3*","~~italic(R)^2~"="~r2,
+                   list(a = format(unname(coef(m)[1]), digits = 2),
+                        b = format(unname(coef(m)[2]), digits = 2),
+                        c = format(unname(coef(m)[3]), digits = 2),
+                        e = format(unname(coef(m)[4]), digits = 2),
+                        r2 = format(summary(m)$r.squared, digits = 3)))
+  as.character(as.expression(eq));
+}
+
+lm_eqn_poly2 <- function(df){
+  m <- lm(sigo ~ muo + I(muo^2), df);
+  eq <- substitute(sigma[o] == a + b %.% d*"'"* + c %.% d*"'"^2*","~~italic(R)^2~"="~r2,
+                   list(a = format(unname(coef(m)[1]), digits = 2),
+                        b = format(unname(coef(m)[2]), digits = 2),
+                        c = format(unname(coef(m)[3]), digits = 2),
+                        r2 = format(summary(m)$r.squared, digits = 3)))
+  as.character(as.expression(eq));
+}
+
+lm_eqn_poly1 <- function(df){
+  m <- lm(sigo ~ muo, df);
+  eq <- substitute(sigma[o] == a + b %.% d*"'"*","~~italic(R)^2~"="~r2,
+                   list(a = format(unname(coef(m)[1]), digits = 2),
+                        b = format(unname(coef(m)[2]), digits = 2),
+                        r2 = format(summary(m)$r.squared, digits = 3)))
+  as.character(as.expression(eq));
+}
+
+fits <- load_files("FitsSimulationExt/","gen")
+fits2 <-load_files("FitSimulationGumbelUVSDT/","gen")
+bestfit <- bind_rows(fits,fits2) %>%
   mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
   mutate(AIC = 2 * npar + 2 * objective) %>%
   group_by(model,id) %>%
@@ -528,19 +529,19 @@ logLik(linmodel3)
 
 
 uvsdtmuosigo <- ggplot(bestfit %>% filter(model == "GaussianUVSDT"),aes(x=muo,y=sigo))+
-  annotate("text", x = 0, y = 4, label = lm_eqn_poly1(bestfit %>% filter(model == "GaussianUVSDT")),
-           parse = TRUE, color="black",hjust = 0)+
-  annotate("text", x = 0, y = 3.8, label = lm_eqn_poly2(bestfit %>% filter(model == "GaussianUVSDT")),
-           parse = TRUE, color="blue",hjust = 0)+
-  annotate("text", x = 0, y = 3.6, label = lm_eqn_poly3(bestfit %>% filter(model == "GaussianUVSDT")),
-           parse = TRUE, color="green",hjust = 0)+
-  geom_point(alpha=0.2,color="red",size=2) +
-  geom_smooth(method=lm,formula=y~x,color="black",size=1, se=T)+
-  geom_smooth(method=lm,formula=y~x + I(x^2),color="blue",size=1, se=T)+
-  geom_smooth(method=lm,formula=y~x + I(x^2)  + I(x^3),color="green",size=1, se=T)+
+  # annotate("text", x = 0, y = 4, label = lm_eqn_poly1(bestfit %>% filter(model == "GaussianUVSDT")),
+  #          parse = TRUE, color="black",hjust = 0)+
+  # annotate("text", x = 0, y = 3.8, label = lm_eqn_poly2(bestfit %>% filter(model == "GaussianUVSDT")),
+  #          parse = TRUE, color="blue",hjust = 0)+
+  # annotate("text", x = 0, y = 3.6, label = lm_eqn_poly3(bestfit %>% filter(model == "GaussianUVSDT")),
+  #          parse = TRUE, color="green",hjust = 0)+
+  geom_point(alpha=0.2,color="#E69F00",size=2) +
+  # geom_smooth(method=lm,formula=y~x,color="black",size=1, se=T)+
+  # geom_smooth(method=lm,formula=y~x + I(x^2),color="blue",size=1, se=T)+
+  # geom_smooth(method=lm,formula=y~x + I(x^2)  + I(x^3),color="green",size=1, se=T)+
 
-  scale_x_continuous(name=expression(paste(mu[o]," (estimated by UVSDT)")),limits=c(-0.5,10),breaks = c(0:10))+
-  scale_y_continuous(name=expression(paste(sigma[o]," (estimated by UVSDT)")),limits=c(0,4))+
+  scale_x_continuous(name=expression(paste("d' (estimated by UVSDT)")),limits=c(-0.5,10),breaks = c(0:10))+
+  scale_y_continuous(name=expression(paste(sigma[o]," (estimated by UVSDT)")),limits=c(0,5))+
   theme(
     axis.text = element_text(size=12),
 
@@ -560,11 +561,22 @@ parametervals <- readRDS(file="simulate_genGumbelEVSDT_parametervalues_mvnext.rd
 gumbelest <- bestfit %>% filter(model == "GumbelEVSDT") %>% select(id,muo) %>% mutate(id = str_remove(id,"_set1")) %>%
   arrange(id) %>% .$muo
 
+
+gumbeluvsdtest <- bestfit %>% filter(model == "GumbelUVSDT") %>% select(id,muo) %>% mutate(id = str_remove(id,"_set1")) %>%
+  arrange(id) %>% .$muo
+
 gumbelfit <- bestfit %>% filter(model == "GumbelEVSDT") %>% select(id,message) %>% mutate(id = str_remove(id,"_set1")) %>%
   arrange(id) %>% .$message
 
 uvsdtest <- bestfit %>% filter(model == "GaussianUVSDT") %>% select(id,muo) %>% mutate(id = str_remove(id,"_set1")) %>%
   arrange(id) %>% .$muo
+
+uvsdtsigma <- bestfit %>% filter(model == "GaussianUVSDT") %>% select(id,sigo) %>% mutate(id = str_remove(id,"_set1")) %>%
+  arrange(id) %>% .$sigo
+
+gumbeluvsdtsigma <- bestfit %>% filter(model == "GumbelUVSDT") %>% select(id,betao) %>% mutate(id = str_remove(id,"_set1")) %>%
+  arrange(id) %>% mutate(sigo = pi/sqrt(6)*betao) %>% .$sigo
+
 
 uvsdtfit <- bestfit %>% filter(model == "GaussianUVSDT") %>% select(id,message) %>% mutate(id = str_remove(id,"_set1")) %>%
   arrange(id) %>% .$message
@@ -572,24 +584,37 @@ uvsdtfit <- bestfit %>% filter(model == "GaussianUVSDT") %>% select(id,message) 
 
 compareboths <- parametervals %>% select(parid,muo) %>% arrange(parid) %>% mutate(muo = -muo)
 
-recoveringmu <- bind_rows(compareboths,compareboths) %>% mutate(muo_estimate = c(-gumbelest,uvsdtest),
-                                                                message = c(gumbelfit,uvsdtfit),
-                                                                model = c(rep("Gumbel",2000),rep("UVSDT",2000)))
+recoveringmu <- bind_rows(compareboths,compareboths,
+                          compareboths) %>% mutate(muo_estimate = c(-gumbeluvsdtest,-gumbelest,uvsdtest),
+                                                             #   message = c(gumbelfit,uvsdtfit),
+                                                                model = c(rep("Gumbel (free sigma[o])",2000),
+                                                                          rep("Gumbel EVSDT",2000),
+                                                                          rep("UVSDT",2000)))
 
-relativeconverg_gen <- intersect(recoveringmu %>% filter(model== "Gumbel") %>% filter(message == "relative convergence (4)") %>%
-                                   .$parid,recoveringmu %>% filter(model== "UVSDT") %>% filter(message == "relative convergence (4)") %>%
-                                   .$parid)
-
+recoveringsigma <- bind_rows(compareboths,compareboths,
+                          compareboths) %>% mutate(sigo_estimate = c(gumbeluvsdtsigma,
+                                                                    rep(pi/sqrt(6),2000),
+                                                                    uvsdtsigma),
+                                                   #   message = c(gumbelfit,uvsdtfit),
+                                                   model = c(rep("Gumbel (free sigma[o])",2000),
+                                                             rep("Gumbel",2000),
+                                                             rep("UVSDT",2000)))
 muoestimateall <- ggplot(recoveringmu ,
                          aes(y=muo_estimate,
                              x=muo,color=model))+
   geom_point(aes(y=muo_estimate,
                  x=muo,color=model),alpha=0.3) +
-  scale_color_manual(name = "Fitted model",values = c("#009E73","#E69F00"))+
+  scale_color_manual(name = "Fitted model",values = c("#CC79A7","#009E73","#E69F00"),
+                     labels=c(expression(paste("Gumbel (free ", sigma[o],")")),
+                              expression(paste("Gumbel")),
+                              expression(paste("UVSDT"))))+
   # geom_point(data = compareboths, aes(x = muo, y = muo_est_gumbel), alpha=0.1,color="blue") +
-  scale_x_continuous(name=expression(paste(mu[o]," (Gumbel, generating value)")),limits=c(-0.5,5.5),breaks = c(0:5))+
-  scale_y_continuous(name=expression(paste("estimated ", mu[o])),limits=c(-0.5,10),breaks = c(0:10))+
-  annotate("text",x = 0,y=10,label=paste("2000/2000 data sets"), hjust = 0)+
+  scale_x_continuous(name=expression(paste(d,"'"," (Gumbel, generating value)")),limits=c(-0.5,5.5),breaks = c(0:5))+
+  scale_y_continuous(name=expression(paste("estimated ", d,"'")),limits=c(-0.5,10),breaks = c(0:10))+
+  guides(color = guide_legend(override.aes = list(size = 3,
+                                                  alpha = 1))) +
+
+  #annotate("text",x = 0,y=10,label=paste("2000/2000 data sets"), hjust = 0)+
   theme(
     axis.text = element_text(size=12),
 
@@ -597,23 +622,33 @@ muoestimateall <- ggplot(recoveringmu ,
     panel.background = element_rect(fill = "white"),
     panel.border = element_rect(fill = "transparent",colour="black"),
     strip.placement = "outside",
-    legend.position = c(0.2,0.5),
+    legend.position = c(0.3,0.7),
+    legend.text.align = 0,
+
     legend.key = element_rect(fill = "transparent"),
     strip.background = element_rect(fill = "transparent",
                                     colour="transparent"),
     strip.text = element_text(size = 12))
 
-
-muoestimateconverge <- ggplot(recoveringmu %>% filter(parid %in% relativeconverg_gen),
-                              aes(y=muo_estimate,
-                                  x=muo,color=model))+
-  geom_point(aes(y=muo_estimate,
+sigoestimateall <- ggplot(recoveringsigma,
+                         aes(y=sigo_estimate,
+                             x=muo))+
+  geom_point(data = recoveringsigma %>% filter(model != "Gumbel"), aes(y=sigo_estimate,
                  x=muo,color=model),alpha=0.3) +
-  scale_color_manual(name = "Fitted model", values = c("#009E73","#E69F00"))+
+  scale_color_manual(name = "Fitted model",values = c("#CC79A7","#E69F00"),
+                     labels=c(expression(paste("Gumbel (free ", sigma[o],")")),expression(paste("UVSDT"))))+
+  geom_line(data =  recoveringsigma %>% filter(model == "Gumbel"),
+            aes(y=sigo_estimate, x=muo,linetype=model),color="#009E73",size=1)+
+  scale_linetype_manual(name = "Generating model",values="dashed")+
+  guides(color = guide_legend(override.aes = list(size = 3,
+                                                  alpha = 1)),
+         linetype = guide_legend(override.aes = list(size = 1,
+                                                  alpha = 1) ) ) +
   # geom_point(data = compareboths, aes(x = muo, y = muo_est_gumbel), alpha=0.1,color="blue") +
-  scale_x_continuous(name=expression(paste(mu[o]," (Gumbel, generating value)")),limits=c(-0.5,5.5),breaks = c(0:5))+
-  scale_y_continuous(name=expression(paste("estimated ", mu[o])),limits=c(-0.5,10),breaks = c(0:10))+
-  annotate("text",x = 0,y=10,label=paste(length(relativeconverg_gen),"/2000 data sets - relative convergence (4)"), hjust = 0)+
+  scale_x_continuous(name=expression(paste(d,"'"," (Gumbel, generating value)")),limits=c(0,5.5),
+                     breaks = c(0:5))+
+  scale_y_continuous(name=expression(paste("estimated ", sigma[o])),limits=c(0,5),breaks = c(0:5))+
+  #annotate("text",x = 0,y=10,label=paste("2000/2000 data sets"), hjust = 0)+
   theme(
     axis.text = element_text(size=12),
 
@@ -621,16 +656,17 @@ muoestimateconverge <- ggplot(recoveringmu %>% filter(parid %in% relativeconverg
     panel.background = element_rect(fill = "white"),
     panel.border = element_rect(fill = "transparent",colour="black"),
     strip.placement = "outside",
-    legend.position = c(0.2,0.5),
+    legend.position = c(0.3,0.7),
+    legend.text.align = 0,
     legend.key = element_rect(fill = "transparent"),
     strip.background = element_rect(fill = "transparent",
                                     colour="transparent"),
     strip.text = element_text(size = 12))
 
-mvnextparameters <- plot_grid(uvsdtmuosigo,muoestimateall,muoestimateconverge,rel_widths = c(1,0.5,0.5),nrow=1)
 
-plot_grid(uniformgenparameters,
-          mvnstandardparameters,mvnextparameters,
-          nrow=3,labels=c("A","B","C"))
 
-ggsave("DiffGenParameters_UVSDTfittedtoGumbel.png", units="cm", width=30, height=35, dpi=600)
+mvnextparameters <- plot_grid(uvsdtmuosigo,muoestimateall,sigoestimateall,rel_widths = c(1,1,1),nrow=1,
+                              labels=c("A","B","C"))
+
+
+ggsave("Test.png", units="cm", width=30, height=10, dpi=600)
