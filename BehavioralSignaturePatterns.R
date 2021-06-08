@@ -3,17 +3,18 @@ source("FitUVSDT.R")
 
 
 # Specific residuals -----------------------------------------------------------
-
-
+# models <- "ExGaussNormEVSDT"
+#
 # fullsubj <- NULL
 # for (subjid in unique(testphase$id)){
 #
 #   for(cond in c("A","B","C","D")){
 #
+#
 #     data <- testphase %>%  filter(id == subjid) %>%
 #       filter(condition == cond)
 #
-#     dp <- prep_data(data)
+#     dp <- prep_data(data,freqdat=FALSE)
 #
 #     ROCs <- NULL
 #     partot <- NULL
@@ -74,9 +75,14 @@ source("FitUVSDT.R")
 #
 # }
 
-#saveRDS(fullsubj,file = "SB2021_individualpredictions.rds")
+#saveRDS(fullsubj,file = "SB2021_individualpredictions_ExGaussNorm.rds")
 
-fullsubj <- readRDS("SB2021_individualpredictions.rds")
+models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT")
+
+fullsubj <- bind_rows(readRDS("SB2021_individualpredictions.rds"),
+                      readRDS("SB2021_individualpredictions_ExGaussNorm.rds") %>%
+                        filter(!pred=="observed"))
+
 alls <- fullsubj %>%
   mutate(condid = paste0(id,"_",condition)) %>%
   group_by(exp,id,condid,condition,model,oldnew) %>%
@@ -107,7 +113,7 @@ for(subjid in unique(alls$condid)){
 
 allresiduals <- allresiduals %>%
   mutate(confidence = factor(confidence,levels = c(1:6))) %>%
-  mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel")))
+  mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm")))
 
 
 
@@ -126,25 +132,27 @@ GumbelWin <- winning %>% filter(model == "GumbelEVSDT") %>% .$condid
 EVSDTWin <- winning %>% filter(model == "GaussianEVSDT") %>% .$condid
 UVSDTWin <- winning %>% filter(model == "GaussianUVSDT") %>%
   relocate(sigo, .after = muo) %>% .$condid
-
+ExGaussNormWin <- winning %>% filter(model == "ExGaussNormEVSDT") %>% .$condid
 
 
 checkwhatishappening <- allfits %>%   filter(delAIC == 0) %>%
   mutate(whowins = case_when(id %in% GumbelWin ~ "Gumbel",
                              id %in% EVSDTWin ~ "EVSDT",
                              id %in% UVSDTWin ~ "UVSDT",
+                             id %in% ExGaussNormWin ~ "ExGaussNorm",
                              TRUE ~ "Else")) %>%
   relocate(sigo, .after = muo) %>%
-  mutate(model = factor(model,levels = models,labels = c("EVSDT","UVSDT","Gumbel"))) %>%
-  mutate(whowins = factor(whowins,levels = c("EVSDT","UVSDT","Gumbel")))
+  mutate(model = factor(model,levels = models,labels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm"))) %>%
+  mutate(whowins = factor(whowins,levels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm")))
 
 calcresiduals <- allresiduals %>%
   mutate(whowins = case_when(condid %in% GumbelWin ~ "Gumbel",
                              condid %in% EVSDTWin ~ "EVSDT",
                              condid %in% UVSDTWin ~ "UVSDT",
+                             condid %in% ExGaussNormWin ~ "ExGaussNorm",
                              TRUE ~ "Else")) %>%
-  mutate(whowins = factor(whowins,levels = c("EVSDT","UVSDT","Gumbel"),
-                          labels = c("EVSDT wins","UVSDT wins","Gumbel wins"))) %>%
+  mutate(whowins = factor(whowins,levels =c("EVSDT","UVSDT","Gumbel","ExGaussNorm"),
+                          labels = c("EVSDT wins","UVSDT wins","Gumbel wins","ExGaussNorm wins"))) %>%
   group_by(exp,condition,whowins,model,oldnew,confidence) %>%
   summarize(mresid = mean(residuals),
             nresid = length(residuals),
@@ -169,9 +177,9 @@ plotresiduals <- function(experiment,whowinsmodel){
            filter(whowins == whowinsmodel),
          aes(x = confidence,y = mresid,color=model,group=model,fill=model,shape=model)) +
 
-    scale_color_manual(values = c("#56B4E9","#E69F00", "#009E73"))+
-    scale_fill_manual(values = c("#56B4E9","#E69F00", "#009E73"))+
-    scale_shape_manual(values = c(22,21,24))+
+    scale_color_manual(values = c("#56B4E9","#E69F00", "#009E73","#CC79A7"))+
+    scale_fill_manual(values = c("#56B4E9","#E69F00", "#009E73","#CC79A7"))+
+    scale_shape_manual(values = c(22,21,24,23))+
     geom_hline(yintercept = 0) +
     coord_cartesian(ylim=c(-.05,.05))+
     scale_y_continuous(name="Residuals")+
@@ -207,12 +215,18 @@ plotresiduals <- function(experiment,whowinsmodel){
 
 Exp1resids <- plot_grid(plotresiduals("SB2021_e1","EVSDT wins"),
                         plotresiduals("SB2021_e1","UVSDT wins"),
-                        plotresiduals("SB2021_e1","Gumbel wins"),labels = levels(Nresids$whowins),ncol=3,
-                        rel_widths=c(1,1,1.1),scale=.95)
+                        plotresiduals("SB2021_e1","ExGaussNorm wins"),
+                        plotresiduals("SB2021_e1","Gumbel wins"),
+
+                        labels = levels(Nresids$whowins),ncol=4,
+                        rel_widths=c(1,1,1,1.1),scale=.95)
 Exp2resids <- plot_grid(plotresiduals("SB2021_e2","EVSDT wins"),
                         plotresiduals("SB2021_e2","UVSDT wins"),
-                        plotresiduals("SB2021_e2","Gumbel wins"),labels = levels(Nresids$whowins),ncol=3,
-                        rel_widths=c(1,1,1.1),scale=.95)
+                        plotresiduals("SB2021_e1","ExGaussNorm wins"),
+                        plotresiduals("SB2021_e2","Gumbel wins"),
+
+                        labels = levels(Nresids$whowins),ncol=4,
+                        rel_widths=c(1,1,1,1.1),scale=.95)
 
 plot_grid(Exp1resids,Exp2resids,labels=c("A","B"),nrow=2)
 

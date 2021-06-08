@@ -356,7 +356,7 @@ gumbelLarge_evsdt_opt <- function(data_list,par,predictorLL){
 gumbelNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   d     <- par[1]
-  sigo  <- 1
+  betao  <- sqrt(6)/pi # since SD of Gumbel = pi/sqrt(6) * beta
   c     <- vector()
   c[1]  <- par[2]
   c[2]  <- c[1] + par[3]
@@ -379,7 +379,7 @@ gumbelNorm_evsdt_opt <- function(data_list,par,predictorLL){
   # Old items
   pOlikJ <- vector()
   for (i in 1:(length(c)+1)){
-    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
+    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=betao,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=betao,max=FALSE)
   }
 
 
@@ -491,7 +491,7 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   d     <- par[1]
   sigo  <- 1
-  betao <- par[2]
+  lambdao <- par[2]
   c     <- vector()
   c[1]  <- par[3]
   c[2]  <- c[1] + par[4]
@@ -517,8 +517,8 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
   for (i in 1:(length(c)+1)){
 
 
-    evaluateboundaryi <- brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao)
-    evaluateboundaryiplus <- brms::pexgaussian(I[i+1],mu=d,sigma=sigo,beta=betao)
+    evaluateboundaryi <- pexgaus_manual(I[i],mu=d,sigma=sigo,lambda=lambdao)
+    evaluateboundaryiplus <- pexgaus_manual(I[i+1],mu=d,sigma=sigo,lambda=lambdao)
 
     pOlikJ[i] <- ifelse(is.na(evaluateboundaryiplus),0,evaluateboundaryiplus) -
       ifelse(is.na(evaluateboundaryi),0,evaluateboundaryi)
@@ -624,7 +624,7 @@ PredictSDT <- function(data = NULL, model, par, itemspertype = NULL){
 
   } else {
 
-    dp <- prep_data(data)
+    dp <- prep_data(data,freqdat=F)
     obsfreq<- c(dp$datalist$New,dp$datalist$Old)
 
     predfreq <- predict_frequencies(data_list = dp$datalist, model = model, par = par) *

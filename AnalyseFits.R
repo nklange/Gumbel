@@ -8,8 +8,7 @@ source("preprocess_data.R")
 
 source("FitUVSDT.R")
 models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT")
-models <- c("GumbelEVSDT","GumbelLargeEVSDT","GumbelNormEVSDT","ExGaussNormEVSDT",
-            "GumbelLargeNormEVSDT")
+models <- c("GumbelNormEVSDT")
 for (model in models){
 
 
@@ -34,7 +33,7 @@ for (model in models){
 }
 
 
-models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT")
+models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT")
 
 load_files <- function(path,pattern) {
 
@@ -57,7 +56,7 @@ bestfit <- fits %>%
 
 # Stability fit -------------------
 
-numbermodels <- 3
+numbermodels <- 5
 
 minDelta <- fits %>%
   filter(model %in% models) %>%
@@ -78,7 +77,7 @@ minDelta <- fits %>%
          #trials = ntrials$n,
          id = id) %>%
   mutate(model = factor(model,
-                        levels = c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT"))) %>%
+                        levels =models)) %>%
   mutate(modelnum = as.numeric(model)) %>%
 
   mutate(modelposition = model) %>%
@@ -224,7 +223,7 @@ datastabpoints <- ggplot(minDelta %>% filter(diffDev <= 10),
   geom_jitter(data = minDelta %>% filter(diffDev <10), aes(x = max(position) + 0.8,
                                                            y = diffDev),
               color = "#A9A9A9",size = 2,alpha=0.6,width=0.15) +
-  scale_color_manual(values = c("#56B4E9","#E69F00", "#009E73"))+
+  #scale_color_manual(values = c("#56B4E9","#E69F00", "#009E73"))+
   geom_text(data = PtsAbove10,
             mapping = aes(x = position - 0.3, y = 10.5,
                           label = paste0(round(notplotted),"%")),size = 2.5) +
@@ -310,6 +309,7 @@ AICmeans1 <- AICmeans %>% filter(condition == cond) %>% filter(exp == experiment
   }
 
 
+
   indstrict_PW <- bestfit %>%
     filter(model %in% models_charvector) %>%
     group_by(exp,id,condition) %>%
@@ -319,19 +319,22 @@ AICmeans1 <- AICmeans %>% filter(condition == cond) %>% filter(exp == experiment
     filter(delAIC == 0) %>% # only 1 model can win
     group_by(exp,condition,model) %>%
     summarize(numBest = length(delAIC)) %>%
-    complete(model, fill = list(0)) %>%
-    group_by(exp,condition,model) %>%
-    summarize(wu = sum(numBest,na.rm=T)) %>%
-    group_by(exp,condition) %>%
-    summarize(wu =wu/sum(wu)) %>%
     mutate(model = factor(model,levels = models)) %>%
+
 
     mutate(condition = factor(condition,
                               levels = c("A","B","C","D"),
                               labels = c("High strength\nHigh variability",
                                          "High strength\nLow variability",
                                          "Low strength\nHigh variability",
-                                         "Low strength\nLow variability")))
+                                         "Low strength\nLow variability"))) %>%
+    mutate(exp = factor(exp)) %>%
+    complete(model,nesting(exp,condition), fill = list(0)) %>%
+    group_by(exp,condition,model) %>%
+    summarize(wu = sum(numBest,na.rm=T)) %>%
+    group_by(exp,condition) %>%
+    mutate(wu =wu/sum(wu)) %>%
+    arrange(exp,condition,model)
 
 
   ylim.prim <- c(0,11)
@@ -345,11 +348,13 @@ AICmeans1 <- AICmeans %>% filter(condition == cond) %>% filter(exp == experiment
   plot <- ggplot(full,
                            aes(y = mdeltaAIC,x = model )) +
     #geom_rect(aes(xmin=0, xmax=24, ymin=0, ymax=1), fill = "grey") +
+    facet_grid(exp~condition)+
     geom_bar(stat = "identity",fill="lightgrey") +
+    coord_flip(ylim = c(0,11)) +
     geom_point(aes(y = a +indstrict_PW$wu*b),
                color = "black",size=2,shape=21,fill="black") +
 
-    coord_flip(ylim = c(0,11)) +
+
     #scale_fill_manual(values=c("#E69F00", "#56B4E9", "#009E73"))+
     # scale_fill_gradientn(name = expression(paste(Delta)),
     #                      colors = rev(brewer.pal(n = 9, name = "YlOrRd")),
@@ -363,7 +368,7 @@ AICmeans1 <- AICmeans %>% filter(condition == cond) %>% filter(exp == experiment
                                            labels = c("0",".25",".50",".75","1"))) +
 
     scale_x_discrete(name = "Model") +
-    facet_grid(exp~condition)+
+
     theme(axis.text.x = element_text(size=12),
           axis.text.y = element_text(size=12,hjust=0),
           axis.ticks.y = element_blank(),
@@ -380,7 +385,9 @@ return(plot)
 }
 
 
-models_charvector <- c("GaussianUVSDT","GaussianEVSDT","GumbelEVSDT")
+models_charvector <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT")
+
+models <- models_charvector
 DeltaAICexclLL <- propbestfit(models_charvector,
                         bestfit %>% filter(!id  %in% exclLL))
 
