@@ -1,5 +1,6 @@
 library(ordinal) #for Gumbel with small extremes (max = F)
-library(brms) #for ExGaussian
+#library(brms) #for ExGaussian
+source("implementgumbel.R")
 
 prep_data <- function(data,freqdat){
 
@@ -13,6 +14,7 @@ prep_data <- function(data,freqdat){
 
     preprepdat <- data %>% group_by(oldnew,response) %>%
       summarize(Freq = length(response)) %>%
+      ungroup() %>%
       mutate(oldnew = factor(oldnew,levels = c("New","Old")),
              response = factor(response, levels = c(1,2,3,4,5,6)))
 

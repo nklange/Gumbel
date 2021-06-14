@@ -9,9 +9,9 @@
 
 # checking ordinal package implementation of gumbel -----------------------------
 
-x <- 0.5 # for small extremes -x
-mu <- 1
-beta <- 1
+# x <- 0.5 # for small extremes -x
+# mu <- 1
+# beta <- 1
 
 dgumbel_manual <- function(x, mu, beta) {
   z <- (x - mu) / beta
@@ -25,24 +25,24 @@ pgumbel_manual <- function(x, mu, beta) {
 }
 
 # setting max = F is equivalent to setting x = -x with max = T
-ordinal::dgumbel(x,location = mu, scale = beta,max=F)
-ordinal::pgumbel(x,location = mu, scale = beta,max=T)
-
-
-ordinal::pgumbel(-1,location = mu, scale = beta,max=T) -
-  ordinal::pgumbel(-1.7, location = mu, scale = beta,max=T)
-
-pgumbel_manual(-1,mu,beta) - pgumbel_manual(-1.7,mu,beta)
+# ordinal::dgumbel(x,location = mu, scale = beta,max=F)
+# ordinal::pgumbel(x,location = mu, scale = beta,max=T)
+#
+#
+# ordinal::pgumbel(-1,location = mu, scale = beta,max=T) -
+#   ordinal::pgumbel(-1.7, location = mu, scale = beta,max=T)
+#
+# pgumbel_manual(-1,mu,beta) - pgumbel_manual(-1.7,mu,beta)
 
 # exgaussian --------------------------------------------------------------------
 
-x <- 0.5
-
-eta <- 0.5
-sigma <- 1
-lambda <- 0.75
-beta <- 1/lambda
-mu <- eta + beta
+# x <- 0.5
+#
+# eta <- 0.5
+# sigma <- 1
+# lambda <- 0.75
+# beta <- 1/lambda
+# mu <- eta + beta
 
 dexgaus_manual <- function(x,mu,sigma,lambda){
 
@@ -73,18 +73,18 @@ dexgaus_manual_brmspara <- function(x,eta,sigma,beta){
 # beta = 1/lambda (scale = inverse rate)
 
 # the below all evaluate to the same
+#
+# dexgaus_manual(x,mu = eta,sigma,lambda) # standard parameterization
+# dexgaus_manual_brmspara(x,eta,sigma,beta)
+# brms::dexgaussian(x,mu,sigma,beta)
 
-dexgaus_manual(x,mu = eta,sigma,lambda) # standard parameterization
-dexgaus_manual_brmspara(x,eta,sigma,beta)
-brms::dexgaussian(x,mu,sigma,beta)
 
-
-x = 0.5
-eta <- 0.5
-sigma <- 1
-lambda <- 0.75
-beta <- 1/lambda
-mu <- eta + beta
+# x = 0.5
+# eta <- 0.5
+# sigma <- 1
+# lambda <- 0.75
+# beta <- 1/lambda
+# mu <- eta + beta
 
 
 
@@ -101,7 +101,7 @@ pexgaus_manual <- function(x,mu,sigma,lambda){
 # in the manual implementation only seems to happen at -Inf exactly, otherwise
 # evaluates to 0
 
-pexgaus_manual(x,mu = eta,sigma,lambda) # standard parameterization
-brms::pexgaussian(x,mu,sigma,beta)
+# pexgaus_manual(x,mu = eta,sigma,lambda) # standard parameterization
+# brms::pexgaussian(x,mu,sigma,beta)
 
 
