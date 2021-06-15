@@ -54,6 +54,8 @@ sigmas <- sds %*% t(sds) * correlations
 # Use multivariate to generate parameters on basis of multivariate distribution
 # Sample 1000 possible sets of generating parameters per model
 
+# Genpar: mvn from par estimates ------------------------------------------------
+
 set.seed(1)
 parameters <- tmvtnorm::rtmvnorm(n=1000, mean = means, sigma=sigmas,
                                  lower=c(-Inf,-Inf,0,0,0,0),
@@ -62,7 +64,7 @@ parameters <- tmvtnorm::rtmvnorm(n=1000, mean = means, sigma=sigmas,
                                  burn.in.samples=1000,
                                  thinning = 100)
 
-
+# Genpar: ext mvn from par estimates --------------------------------------------
 #rejectionsampling: for range of generating mu
 # set up mu a bit to have a higher chance of high mu, increase sds for all parameters
 # keep correlations
@@ -93,7 +95,8 @@ parametersext <- bind_rows(as_tibble(parameters2) %>% filter(V1 < -4.5 & V1 > -5
           as_tibble(parameters2) %>% filter(V1 < -0.5 & V1 > -1) %>% dplyr::slice(1:200),
           as_tibble(parameters2) %>% filter(V1 < 0 & V1 > -0.5) %>% dplyr::slice(1:200))
 
-# parameter values from uniform
+# Genpar: uniform --------------------------------------------------------------
+
 nmatch <- 1000 #same number of datasets as mvtnorm total
 
 parametersunif <- tibble(muo = runif(nmatch,min=-5,max=.Machine$double.eps),
@@ -107,7 +110,26 @@ parametersunif <- tibble(muo = runif(nmatch,min=-5,max=.Machine$double.eps),
 
 genmodel <- "GumbelEVSDT"
 
-parametersext<-readRDS(file="simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
+
+
+# Genpar: keep crit ------------------------------------------------------------
+
+extparvalues<-readRDS(file="simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
+
+set.seed(1)
+somecritsamples <- sample(1:2000,50)
+keepcrits <- extparvalues[somecritsamples,] %>%
+  mutate(critnum = c(1:50)) %>%
+  select(-muo) %>%
+  dplyr::slice(rep(1:n(),each=26)) %>%
+  mutate(muo = rep(seq(-5,0,0.2),50),
+         munum = rep(1:26,50)) %>%
+  mutate(parid = paste0("genGumbelEVSDT_extcrit",critnum,"_mu",munum) ) %>%
+  select(-critnum,-munum)
+
+#saveRDS(keepcrits,file="simulate_genGumbelEVSDT_parametervalues_keepcrits.rds")
+
+# Simulate data ----------------------------------------------------------------
 
 simulation <- NULL
 parametertibble <- NULL
@@ -151,8 +173,12 @@ simulation <- simulation %>% bind_rows(simtibble)
 
 saveRDS(simulation,file="simulate_genGumbelEVSDT_data_trials200_mvnext.rds")
 #saveRDS(parametertibble,file="simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
-library("doParallel")
-library("foreach")
+
+# Fitting routine for server --------------------------------------------------
+# library("doParallel")
+# library("foreach")
+
+
 
 # doParallel::registerDoParallel(cores=16)
 # mcoptions <- list(preschedule=FALSE, set.seed=FALSE)
@@ -170,13 +196,12 @@ library("foreach")
 #                }
 
 
-# Large-N simulations ----------------------------------------------------------
-# generate from GumbelEVSDT. 50k old trials, 50k new trials per dataset
-# 1000 sets of generating parameters in total
+# Analysis ---------------------------------------------------------
 
-################################
+
+# Large N - uniform #############################################################
 # uniformly-dist. gen parameters
-################################
+#
 
 
 fits <- load_files("FitsSimulationunif/","gen")
@@ -316,11 +341,11 @@ muoestimateconverge <- ggplot(recoveringmu %>% filter(parid %in% relativeconverg
 uniformgenparameters <- plot_grid(uvsdtmuosigo,muoestimateall,muoestimateconverge,rel_widths = c(1,0.5,0.5),nrow=1)
 
 
-################################################################################
+# Large N - mvn #####################################################
 # generated from reasonable Gumbel parameters (based on fits to Spanton & Berry)
 # generated from multivariate normal of parameter space
 # multivariate sample, no rejection sampling for range
-################################################################################
+#
 
 fits <- load_files("FitsSimulation/","gen")
 
@@ -458,14 +483,14 @@ mvnstandardparameters <- plot_grid(uvsdtmuosigo,muoestimateall,muoestimateconver
 
 
 
-################################################################################
+#Large N - Ext Mvn #############################################################
 # generated from reasonable Gumbel parameters (based on fits to Spanton & Berry)
 # generated from multivariate normal of parameter space
 # multivariate sample BUTsome changes to values + sds, correlation the same
 # rejection sampling for range
 # 10 bins, each with 200 data sets, to cover mu_gen of 0 - 5
 # LARGE N
-################################################################################
+#
 
 
 
@@ -674,14 +699,14 @@ LargeN <- plot_grid(muoestimateall,sigoestimateall,uvsdtmuosigo,rel_widths = c(1
 
 #ggsave("LargeN_Gumbelsimulation.png", units="cm", width=30, height=10, dpi=600)
 
-################################################################################
+# Low N- Ext Mvn ###############################################################
 # generated from reasonable Gumbel parameters (based on fits to Spanton & Berry)
 # generated from multivariate normal of parameter space
 # multivariate sample BUTsome changes to values + sds, correlation the same
 # rejection sampling for range
 # 10 bins, each with 200 data sets, to cover mu_gen of 0 - 5
 # LOW N
-################################################################################
+#
 
 
 # Choose limited set of data points to display in plots
@@ -704,9 +729,6 @@ set.seed(1)
 criticalsets <- paste0(rep("set",10),sample(2:51,10))
 
 critsets <- paste0("genGumbelEVSDT_",rep(criticalpar,each=10),"_",criticalsets)
-
-# choose "_set2" arbitrarily
-
 bestfit <- readRDS("genGumbel_trials200_bestfit.rds") %>% filter(id %in% critsets)
 
 # Analyse correlation r(mu_o, sig_o) in UVSDT fits of Gumbel-generated data
@@ -970,11 +992,10 @@ uvsdtmuosigo <- ggplot(bestfit %>% filter(model == "GaussianUVSDT") %>% filter(i
 LOWN <- plot_grid(muoestimateall,sigoestimateall,uvsdtmuosigo,rel_widths = c(1,1,1),nrow=1,
           labels=c("1)","2)","3)"),scale=.95, label_x = 0, label_y = 0.9)
 
-################################################################################
+# Large N - keep crit ##########################################################
 # vary mu-only (0 to 5), while keeping crits identical
 # based on multivariate-extended generated crits above
 # LARGE N
-################################################################################
 
 
 
@@ -1230,5 +1251,60 @@ samecrit <- plot_grid(muoestimateall,sigoestimateall,uvsdtmuosigo,rel_widths = c
 plot_grid(LargeN,LOWN,samecrit,labels=c("A","B","C"),nrow=3)
 
 
-ggsave("Gumbelsimulation_extmvn.png", units="cm", width=30, height=30, dpi=600)
+#ggsave("Gumbelsimulation_extmvn.png", units="cm", width=30, height=30, dpi=600)
+
+# % Best recovered by AIC ------------------------------------------------------
+
+# LargeN - extmvn
+fits <- load_files("FitSimulation_keepcrit_largeN/","gen")
+# Gumbel: 81.9, GumbelUVSDT: 16.6, UVSDT: 1.46
+# Gumbel: 98.2, UVSDT: 1.75
+
+# LowN - extmvn
+# Total
+# Gumbel: 81, GumbelUVSDT: 8.72, UVSDT: 10.2
+# Gumbel: 88.8, UVSDT: 11.2
+
+#set.seed(1)
+#criticalsets <- paste0(rep("set",10),sample(2:51,10))
+
+#critsets <- paste0("genGumbelEVSDT_",rep(criticalpar,each=10),"_",criticalsets)
+DeltaAIC <- readRDS("genGumbel_trials200_bestfit.rds") %>%
+  #filter(id %in% critsets) %>%
+  arrange(model,id) %>%
+  group_by(id) %>%
+  mutate(delAIC = AIC - min(AIC))
+
+# LargeN - keepcrits
+
+fits <- bind_rows(load_files("FitsSimulationExt/","gen"),
+                  load_files("FitSimulationGumbelUVSDT/","gen"))
+
+# Gumbel: 84.6, GumbelUVSDT: 14.2, UVSDT: 1.25
+# Gumbel: 98.5, UVSDT: 1.46
+
+
+
+DeltaAIC <- fits %>%
+  mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
+  mutate(AIC = 2 * npar + 2 * objective) %>%
+  group_by(model,id) %>%
+  arrange(objective) %>%
+  dplyr::slice(1) %>%
+  arrange(model,id) %>%
+  group_by(id) %>%
+  mutate(delAIC = AIC - min(AIC))
+
+
+DeltaAIC %>% filter(model == "GaussianUVSDT" & delAIC == 0) %>% .$id
+
+DeltaAIC %>%
+  #filter(model %in% c("GumbelEVSDT","GaussianUVSDT")) %>%
+  filter(delAIC == 0) %>% # only 1 model can win
+  group_by(model) %>%
+  summarize(numBest = length(delAIC)) %>%
+  complete(model,fill = list(0)) %>%
+  group_by(model) %>%
+  summarize(wu = sum(numBest,na.rm=T)) %>%
+  mutate(wu =wu/sum(wu))
 
