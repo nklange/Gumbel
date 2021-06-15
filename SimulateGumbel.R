@@ -1261,7 +1261,7 @@ fits <- load_files("FitSimulation_keepcrit_largeN/","gen")
 # Gumbel: 98.2, UVSDT: 1.75
 
 # LowN - extmvn
-# Total
+# Total (also non-converging fits included for all models)
 # Gumbel: 81, GumbelUVSDT: 8.72, UVSDT: 10.2
 # Gumbel: 88.8, UVSDT: 11.2
 

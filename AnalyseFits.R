@@ -8,9 +8,10 @@ source("preprocess_data.R")
 
 source("FitUVSDT.R")
 models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT")
-models <- c("GumbelNormEVSDT")
+
 for (model in models){
 
+  model <- "ExGaussNormEVSDT"
 
   for(subjid in unique(testphase$id)){
   # for(experiment in c("SB2021_e1","SB2021_e2")){
@@ -20,13 +21,15 @@ for (model in models){
 
       data <- testphase %>% filter(id == subjid) %>% filter(condition==cond)
 
+
+
       fit <- FitSDT(data = data, model = model, rep=20, freqdat = F) %>% mutate(condition = cond)
 
       fullsubj <- fullsubj %>% bind_rows(fit)
     }
 
 
-    saveRDS(fullsubj,file = paste0("Fits2/fit_seperateconditions_",model,"_",subjid,".rds"))
+    saveRDS(fullsubj,file = paste0("FitsExGauss/fit_seperateconditions_",model,"_",subjid,".rds"))
 
   }
 
@@ -46,13 +49,14 @@ load_files <- function(path,pattern) {
 
 fits <- load_files("Fits2/","fit")
 
-
 bestfit <- fits %>%
   mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
   mutate(AIC = 2 * npar + 2 * objective) %>%
   group_by(model,id,condition) %>%
   arrange(objective) %>%
   dplyr::slice(1)
+
+
 
 # Stability fit -------------------
 

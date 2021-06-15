@@ -3,79 +3,79 @@ source("FitUVSDT.R")
 
 
 # Specific residuals -----------------------------------------------------------
-# models <- "ExGaussNormEVSDT"
-#
-# fullsubj <- NULL
-# for (subjid in unique(testphase$id)){
-#
-#   for(cond in c("A","B","C","D")){
-#
-#
-#     data <- testphase %>%  filter(id == subjid) %>%
-#       filter(condition == cond)
-#
-#     dp <- prep_data(data,freqdat=FALSE)
-#
-#     ROCs <- NULL
-#     partot <- NULL
-#
-#
-#
-#     for (modelname in models){
-#
-#       par <- bestfit %>%
-#         filter(model == modelname) %>%
-#         filter(id == subjid) %>%
-#         filter(condition == cond) %>%
-#         ungroup() %>%
-#         select(names(get_start_par(modelname)))
-#
-#       makePredictions <- PredictSDT(data,modelname,as.numeric(par))
-#
-#       predicted <- tibble(
-#         exp = dp$exp,
-#         id = dp$id,
-#         condition = cond,
-#         model = modelname,
-#         pred = "predicted",
-#         confidence = rep(dp$confidence,2),
-#         oldnew = c(rep("New",length(dp$confidence)),rep("Old",length(dp$confidence))),
-#         freq = makePredictions$predicted
-#       )
-#
-#       ROCs <- ROCs %>% bind_rows(predicted)
-#
-#     }
-#
-#
-#
-#     observed <-  tibble(
-#       exp = dp$exp,
-#       id = dp$id,
-#       condition = cond,
-#       model = "Data",
-#       pred = "observed",
-#       confidence = rep(dp$confidence,2),
-#       oldnew = c(rep("New",length(dp$confidence)),rep("Old",length(dp$confidence))),
-#       freq =c(dp$datalist$New,dp$datalist$Old)
-#     )
-#
-#     raw <- bind_rows(ROCs,observed) %>%
-#       mutate(confidence = factor(confidence,levels=c(6:1))) %>%
-#       group_by(exp,id,condition,model,pred,oldnew) %>%
-#       arrange(exp,id,condition,model,pred,oldnew,confidence) %>%
-#       mutate(roc = (cumsum(freq)/sum(freq))) %>%
-#       mutate(zroc =  qnorm(roc)) %>%
-#       mutate(zroc = ifelse(!is.finite(zroc),NA,zroc)) %>%
-#       mutate(condid = paste0(id,"_",condition))
-#
-#     fullsubj <- fullsubj %>% bind_rows(raw)
-#
-#   }
-#
-# }
+models <- c("ExGaussNormEVSDT","GumbelEVSDT","GaussianEVSDT","GaussianUVSDT")
 
-#saveRDS(fullsubj,file = "SB2021_individualpredictions_ExGaussNorm.rds")
+fullsubj <- NULL
+for (subjid in unique(testphase$id)){
+
+  for(cond in c("A","B","C","D")){
+
+
+    data <- testphase %>%  filter(id == subjid) %>%
+      filter(condition == cond)
+
+    dp <- prep_data(data,freqdat=FALSE)
+
+    ROCs <- NULL
+    partot <- NULL
+
+
+
+    for (modelname in models){
+
+      par <- bestfit %>%
+        filter(model == modelname) %>%
+        filter(id == subjid) %>%
+        filter(condition == cond) %>%
+        ungroup() %>%
+        select(names(get_start_par(modelname)))
+
+      makePredictions <- PredictSDT(data,modelname,as.numeric(par))
+
+      predicted <- tibble(
+        exp = dp$exp,
+        id = dp$id,
+        condition = cond,
+        model = modelname,
+        pred = "predicted",
+        confidence = rep(dp$confidence,2),
+        oldnew = c(rep("New",length(dp$confidence)),rep("Old",length(dp$confidence))),
+        freq = makePredictions$predicted
+      )
+
+      ROCs <- ROCs %>% bind_rows(predicted)
+
+    }
+
+
+
+    observed <-  tibble(
+      exp = dp$exp,
+      id = dp$id,
+      condition = cond,
+      model = "Data",
+      pred = "observed",
+      confidence = rep(dp$confidence,2),
+      oldnew = c(rep("New",length(dp$confidence)),rep("Old",length(dp$confidence))),
+      freq =c(dp$datalist$New,dp$datalist$Old)
+    )
+
+    raw <- bind_rows(ROCs,observed) %>%
+      mutate(confidence = factor(confidence,levels=c(6:1))) %>%
+      group_by(exp,id,condition,model,pred,oldnew) %>%
+      arrange(exp,id,condition,model,pred,oldnew,confidence) %>%
+      mutate(roc = (cumsum(freq)/sum(freq))) %>%
+      mutate(zroc =  qnorm(roc)) %>%
+      mutate(zroc = ifelse(!is.finite(zroc),NA,zroc)) %>%
+      mutate(condid = paste0(id,"_",condition))
+
+    fullsubj <- fullsubj %>% bind_rows(raw)
+
+  }
+
+}
+
+saveRDS(fullsubj,file = "SB2021_individualpredictions_total.rds")
 
 models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT")
 

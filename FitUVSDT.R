@@ -18,7 +18,7 @@ prep_data <- function(data,freqdat){
       mutate(oldnew = factor(oldnew,levels = c("New","Old")),
              response = factor(response, levels = c(1,2,3,4,5,6)))
 
-    fullresp <- preprepdat %>% expand(response)
+    fullresp <- preprepdat %>% expand(oldnew,response)
 
     prepdat <- preprepdat %>% right_join(fullresp) %>%
       mutate(Freq = ifelse(is.na(Freq),1/6,Freq)) %>%
@@ -238,7 +238,7 @@ gaussian_evsdt_opt <- function(data_list,par,predictorLL){
 
   # Likelihood of every trial
   # New items
-  NlikJ <- vector()
+  pNlikJ <- vector()
   for (i in 1:(length(c)+1)){
     pNlikJ[i] <- pnorm(I[i+1],mean=0,sd=sign)-pnorm(I[i],mean=0,sd=sign)
   }
@@ -567,8 +567,8 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
   for (i in 1:(length(c)+1)){
 
 
-    evaluateboundaryi <- pexgaus_manual(I[i],mu=d,sigma=sigo,lambda=lambdao)
-    evaluateboundaryiplus <- pexgaus_manual(I[i+1],mu=d,sigma=sigo,lambda=lambdao)
+    evaluateboundaryi <- brms::pexgaussian(I[i],mu=d+1/lambdao,sigma=sigo,beta=1/lambdao)
+    evaluateboundaryiplus <- brms::pexgaussian(I[i+1],mu=d+1/lambdao,sigma=sigo,beta=1/lambdao)
 
     pOlikJ[i] <- ifelse(is.na(evaluateboundaryiplus),0,evaluateboundaryiplus) -
       ifelse(is.na(evaluateboundaryi),0,evaluateboundaryi)
@@ -648,7 +648,17 @@ FitSDT <- function (data, model, rep = rep, startpar = NULL, freqdat = F) {
   return(res)
 }
 
+PredictCVHoldout <- function(TrainData, model, HoldOutData){
 
+  pars <- TrainData %>% filter(model == model) %>%
+    select(names(get_start_par(model))) %>% unlist()
+
+  dp <- prep_data(HoldOutData,freqdat=F)
+
+  out <- optfunction(model = model, data_list = dp$datalist,par = pars)
+  return(out)
+
+}
 
 
 PredictSDT <- function(data = NULL, model, par, itemspertype = NULL){
