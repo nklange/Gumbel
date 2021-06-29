@@ -1,6 +1,6 @@
 library(ordinal) #for Gumbel with small extremes (max = F)
 #library(brms) #for ExGaussian
-source("implementgumbel.R")
+#source("implementgumbel.R")
 
 prep_data <- function(data,freqdat){
 
@@ -22,6 +22,7 @@ prep_data <- function(data,freqdat){
 
     prepdat <- preprepdat %>% right_join(fullresp) %>%
       mutate(Freq = ifelse(is.na(Freq),1/6,Freq)) %>%
+      #mutate(Freq = ifelse(is.na(Freq),0,Freq)) %>%
       arrange(oldnew,response)
 
   }
@@ -95,7 +96,20 @@ get_start_par <- function(model){
 
     pstart <- bind_rows(pstartunif)
 
-  }   else if (model %in% c("ExGaussNormEVSDT","GumbelUVSDT")){
+  }   else if (model %in% c("ExGaussNormEVSDT")){
+    pstartunif <- tibble(
+      muo   = runif(1, min=0, max=3),
+      betao = 1/runif(1, min=1, max=3),
+      c1   = runif(1, min=-2, max=0),
+      dc1  = runif(1, min=0, max=1),
+      dc2  = runif(1, min=0, max=1),
+      dc3  = runif(1, min=0, max=1),
+      dc4  = runif(1, min=0, max=1)
+    )
+
+    pstart <- bind_rows(pstartunif)
+
+  }  else if (model %in% c("GumbelUVSDT")){
     pstartunif <- tibble(
       muo   = runif(1, min=0, max=3),
       betao = runif(1, min=1, max=3),
@@ -326,32 +340,29 @@ gumbel_evsdt_opt <- function(data_list,par,predictorLL){
   sign  <- 1
   I <- c(-Inf,c,Inf) # put criteria into larger array
 
-  # Likelihood of every trial
-  # New items
+  # likelihood by response category
+
   pNlikJ <- vector()
-  for (i in 1:(length(c)+1)){
-    pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=FALSE)-ordinal::pgumbel(I[i],location=0,scale=sign,max=FALSE)
-
-
-  }
-
-
-  # Old items
   pOlikJ <- vector()
+
   for (i in 1:(length(c)+1)){
-    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=FALSE)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=FALSE)
+
+    pNlikJ[i] <- ordinal::pgumbel(I[i+1],location=0,scale=sign,max=F)-ordinal::pgumbel(I[i],location=0,scale=sign,max=F)
+    pOlikJ[i] <- ordinal::pgumbel(I[i+1],location=d,scale=sigo,max=F)-ordinal::pgumbel(I[i],location=d,scale=sigo,max=F)
 
   }
 
   if(predictorLL == "LL"){
 
-    DataN <- data_list$New
-    DataO <- data_list$Old
+    Data <-  c(data_list$New,data_list$Old)
+    llk <- Data * log(c(pNlikJ,pOlikJ))
+    llk[Data == 0] <- 0
 
-    NlikJ <- DataN * log(pNlikJ)
-    OlikJ <- DataO * log(pOlikJ)
+    llk <- sum(llk)
+    if (is.na(llk)) llk <- -1e10
+    if (llk == -Inf) llk <- -1e10
 
-    return(sum(c(NlikJ,OlikJ)))
+    return(llk)
 
   } else {
     return(c(pNlikJ,pOlikJ))
@@ -540,8 +551,11 @@ gumbelFlip_evsdt_opt <- function(data_list,par,predictorLL){
 exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
 
   d     <- par[1]
-  sigo  <- 1
-  lambdao <- par[2]
+  sigo <- 1
+ # lambda <- 1/par[2]
+ # sigo  <- sqrt(sigma +  1/lambda^2)
+
+  betao <- par[2]
   c     <- vector()
   c[1]  <- par[3]
   c[2]  <- c[1] + par[4]
@@ -549,8 +563,8 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
   c[4]  <- c[3] + par[6]
   c[5]  <- c[4] + par[7]
 
-  # Constraints
-  sign  <- 1
+  # Constraints for equal-variance!
+  sign  <- sigo
   I <- c(-Inf,c,Inf) # put criteria into larger array
 
   # Likelihood of every trial
@@ -567,11 +581,13 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
   for (i in 1:(length(c)+1)){
 
 
-    evaluateboundaryi <- brms::pexgaussian(I[i],mu=d+1/lambdao,sigma=sigo,beta=1/lambdao)
-    evaluateboundaryiplus <- brms::pexgaussian(I[i+1],mu=d+1/lambdao,sigma=sigo,beta=1/lambdao)
+    evaluateboundaryi <- brms::pexgaussian(I[i],mu=d,sigma=sigo,beta=betao)
+    evaluateboundaryiplus <- brms::pexgaussian(I[i+1],mu=d,sigma=sigo,beta=betao)
 
     pOlikJ[i] <- ifelse(is.na(evaluateboundaryiplus),0,evaluateboundaryiplus) -
       ifelse(is.na(evaluateboundaryi),0,evaluateboundaryi)
+
+    #pOlikJ[i] <- evaluateboundaryiplus - evaluateboundaryi
 
     # this is a hack for quick test. pexGaussian(-Inf,mu,sigma,beta) evaluates to NaN while
     # pnorm(-Inf,mead,sd) evaluates to 0, so does pgumbel(-Inf,location,scale,max=F)
@@ -589,7 +605,13 @@ exGaussNorm_evsdt_opt <- function(data_list,par,predictorLL){
     NlikJ <- DataN * log(pNlikJ)
     OlikJ <- DataO * log(pOlikJ)
 
-    return(sum(c(NlikJ,OlikJ)))
+
+    llk <- sum(c(NlikJ,OlikJ))
+
+    if (is.na(llk)) llk <- -1e10
+    if (llk == -Inf) llk <- -1e10
+
+    return(llk)
 
   } else {
     return(c(pNlikJ,pOlikJ))
@@ -734,70 +756,220 @@ predict_frequencies <- function(data_list,model,par){
 
 }
 
+
+GetGsquared <- function(model,LL,observedData){
+
+  temp <- c(observedData[1:6] * log(observedData[1:6]/sum(observedData[1:6])),
+            observedData[7:12] * log(observedData[7:12]/sum(observedData[7:12])))
+  temp[observedData == 0] <- 0
+
+  f <- tibble( GSq = 2*(LL - -sum(temp) )) # Calculate G^2
+  f$df     <- length(observedData)-length(names(get_start_par(model)))-1
+  f$pGSq   <- 1-pchisq(f$GSq,f$df)       # p value of GSq
+
+  return(f)
+}
+
+
+# sample_auc_withcritssimulation<-function(par,model,nitems){
 #
-# GetGsquared <- function(model,LL,observedData){
+#   if(model == "GaussianUVSDT"){
+#     strength_old <- rnorm(nitems,mean = par[[1]],sd = par[[2]])
+#     strength_new <- rnorm(nitems,mean = 0, sd = 1)
+#     crits <- c(-Inf,cumsum(as.numeric(par[c(3:7)])),Inf)
 #
-#   temp <- observedData * log(observedData/60)
-#   temp[observedData == 0] <- 0
+#   } else if(model == "GumbelEVSDT"){
 #
-#   f <- tibble( GSq = 2*(LL - -sum(temp) )) # Calculate G^2 (better approximator to Chi-sq dist than Pearson Chi-Sq)
-#   f$df     <- length(observedData)-length(names(get_start_par(model)))-1            # df model (L&F,p.63) n_observations - n_freeparas - 1
-#   f$pGSq   <- 1-pchisq(f$GSq,f$df)       # p value of GSq
-#
-#   return(f)
-# }
-#
-# predict_roc <- function(model,par){
-#
-#
-#
-#   if (model %in% c("GaussianUVSDT")){
-#
-#     par <- get_start_par("GaussianUVSDT")
-#
-#
-#
-#     results             <- tibble(zfa = stats::qnorm(c(seq(0.001, 0.99999, 0.01), 0.99999), 0, 1)
-#     )
-#   # DPSD # Yonelinas (1999), p. 1420
-#
-#   results$zfa[which(results$zfa > 1)] <- NA
-#   results$zhit        <- 1/par[[2]] * results$zfa + par[[1]]/par[[2]]
-#   results$zhit[results$zhit > 1] <- NA
-#
-#   } if (model %in% c("GumbelEVSDT")){
-#
-#
-#     par <- get_start_par("GumbelEVSDT")
+#     # switch the sign on muo to get equivalent results to the pgumbel fitting
+#     strength_old <- ordinal::rgumbel(nitems,location = -par[[1]],scale = 1,max=F)
+#     strength_new <- ordinal::rgumbel(nitems,location = 0,scale = 1,max=F)
+#     crits <- c(-Inf,cumsum(as.numeric(par[c(2:6)])),Inf)
+#   }
 #
 #
 #
-#     results             <- tibble(zfa = ordinal::qgumbel(c(seq(0.001, 0.99999, 0.01), 0.99999), location = 0, scale = 1,max=F)
-#     )
+#   rating_old <- vector()
+#   rating_new <- vector()
 #
-#     scale <- 1
-#     meanold <- -par[[1]] - scale*-digamma(1)
-#     meannew <- 0 - scale*-digamma(1)
-#     sig <- sqrt(((pi^2)/6) * scale^2)
-#     results$zhit        <- results$zfa - (meanold - meannew)
+#   for(i in c(1:nitems)){
+#
+#
+#     rating_old[[i]] <- match(strength_old[[i]],sort(c(strength_old[[i]],crits)))-1
+#     rating_new[[i]] <- match(strength_new[[i]],sort(c(strength_new[[i]],crits)))-1
 #
 #   }
 #
-#   # DPSD # Yonelinas (1999), p. 1420
-#   criterion           <- stats::qnorm(results$fa/(1 - rl), - mul, sdl)
-#   criterion[which(results$fa/(1 - rl) > 1)] <- 1000
-#   results$hit        <- results$fa + rt + (1 - rt) * stats::pnorm(criterion, - mut, sdt) - (1 - rl) * stats::pnorm(criterion, - mul, sdl)
-#   results$hit[results$hit > 1] <- 1
+#   dp <- prep_data(tibble(oldnew = rep(c("Old","New"),each=nitems),
+#          response = c(rating_old,rating_new),
+#          id = "simulate"),freqdat=F)
+#
+#   rocs <-  tibble(
+#     id = dp$id,
+#     confidence = rep(dp$confidence,2),
+#     oldnew = c(rep("New",length(dp$confidence)),rep("Old",length(dp$confidence))),
+#     freq =c(dp$datalist$New,dp$datalist$Old)
+#   ) %>%
+#     mutate(confidence = factor(confidence,levels=c(6:1))) %>%
+#     group_by(id,oldnew) %>%
+#     arrange(id,oldnew,confidence) %>%
+#     mutate(roc = (cumsum(freq)/sum(freq)))
+#
+#   # taken from pROC package auc function
+#
+#   se <- rocs %>% filter(oldnew=="Old") %>% .$roc #roc$sensitivities #hit rate
+#   sp <- rocs %>% filter(oldnew=="New") %>% .$roc #roc$specificities #fa rate
+#
+#
+#   diffs.x <- sp[-1] - sp[-length(sp)]
+#   means.vert <- (se[-1] + se[-length(se)])/2
+#   auc <- sum(means.vert * diffs.x)
+#   auc
 # }
 #
-# dats <- raw %>% .$ROCinfo %>% .[[1]] %>% filter(model == "Data")
-# obs <- tibble(zfa = dats %>% filter(oldnew == "New") %>% .$zroc,
-#               zhit = dats %>% filter(oldnew == "Old") %>% .$zroc)
 #
-# ggplot(data = results,aes(x = zfa, y = zhit))+
-#   geom_line(data = results,aes(x = zfa, y = zhit),color="red") +
-#   geom_line(data = resultsGauss,aes(x = zfa, y = zhit),color="blue") +
-#   coord_cartesian(xlim = c(-3,2),ylim=c(-3,2))+
-#   geom_point(data = obs, aes(x =zfa,
-#              y = zhit), shape = 21, color="black")
+# genpar <- bestfit %>% filter(model %in% c("GaussianUVSDT","GumbelEVSDT")) %>% arrange(id,condition,model) %>%
+#   select(id,model,muo,sigo,c1,dc1,dc2,dc3,dc4) %>% ungroup()
 #
+# gaussianpar <- genpar %>% filter(model=="GaussianUVSDT") %>% select(names(get_start_par("GaussianUVSDT")))
+# gumbelpar <- genpar %>% filter(model=="GumbelEVSDT") %>% select(names(get_start_par("GumbelEVSDT")))
+#
+#
+# multiples <- NULL
+#
+# for(j in c(1:dim(gaussianpar)[[1]])){
+#
+#   uvsdt_auc <- vector()
+#   gumbel_auc <- vector()
+#   for(i in c(1:100)){
+#
+#     uvsdt_auc[[i]] <- sample_auc_withcritssimulation(as.numeric(gaussianpar[j,]),"GaussianUVSDT",100)
+#     gumbel_auc[[i]] <- sample_auc_withcritssimulation(as.numeric(gumbelpar[j,]),"GumbelEVSDT",100)
+#
+#   }
+#
+#   results <- tibble(run = j,
+#                     model = c("GaussianUVSDT","GumbelEVSDT"),
+#                     mAUC = c(mean(uvsdt_auc),mean(gumbel_auc)),
+#                     sdAUC = c(sd(uvsdt_auc),sd(gumbel_auc)))
+#
+#
+#   multiples <- multiples %>% bind_rows(results)
+#
+# }
+#
+#
+#
+#
+sample_auc_critfree <-function(par,model){
+
+
+  if(model == "GaussianUVSDT"){
+
+    results             <- tibble(zfa = qnorm(seq(0.00001, 0.99999, 0.00001)))
+    results$zhit        <- 1/par[[2]] * results$zfa + par[[1]]/par[[2]]
+
+    res2 <- results %>% mutate(fa = pnorm(zfa), hit = pnorm(zhit))
+
+  } else if(model == "GumbelEVSDT"){
+
+    results             <- tibble(zfa = ordinal::qgumbel(seq(0.00001, 0.99999, 0.00001),
+                                                         location = 0, scale = 1,max=F))
+    results$zhit        <- results$zfa + par[[1]]
+
+    res2 <- results %>% mutate(fa = pnorm(qnorm(pgumbel(zfa))), hit = pnorm(qnorm(pgumbel(zhit)))) #?
+
+  } else if(model == "GaussianEVSDT"){
+
+      results             <- tibble(zfa = qnorm(seq(0.00001, 0.99999, 0.00001)))
+      results$zhit        <- results$zfa + par[[1]]
+
+      res2 <- results %>% mutate(fa = pnorm(zfa), hit = pnorm(zhit))
+
+  }
+
+
+  #taken from pROC package
+
+  se <- res2$hit#rocs %>% filter(oldnew=="Old") %>% .$roc #roc$sensitivities #hit rate
+  sp <- res2$fa#rocs %>% filter(oldnew=="New") %>% .$roc #roc$specificities #fa rate
+
+
+  diffs.x <- sp[-1] - sp[-length(sp)]
+  means.vert <- (se[-1] + se[-length(se)])/2
+  auc <- sum(means.vert * diffs.x)
+  auc
+
+}
+#
+#
+#
+SDcomp <- NULL
+for (j in c(1:500)){
+
+par<- tibble(muo = truncnorm::rtruncnorm(100,mean=2,sd=1,a=0,b=Inf),
+             sigo = truncnorm::rtruncnorm(100,mean=2,sd=1,a=1,b=3))
+
+auc<-vector()
+auc2 <- vector()
+auc3 <- vector()
+
+for (i in 1:100){
+auc[[i]] <- sample_auc_critfree(par[i,],"GaussianUVSDT")
+auc2[[i]] <- sample_auc_critfree(par[i,],"GumbelEVSDT")
+auc3[[i]] <- sample_auc_critfree(par[i,],"GaussianEVSDT")
+}
+
+
+collect <- tibble(run = j,
+                  model = c("GaussianUVSDT","GumbelEVSDT","GaussianEVSDT"),
+                  sds = c(sd(auc), sd(auc2), sd(auc3)),
+                  means = c(mean(auc), mean(auc2),mean(auc3)))
+
+SDcomp <- SDcomp %>% bind_rows(collect)
+
+}
+
+
+ggplot(SDcomp,aes(x = sdAUC,color=model))+
+  geom_density()
+
+
+# translating gumbel on gumbel coordinates (log-log) to gumbel on
+# normal coordinates
+
+# res3 <- res2 %>% mutate(zfa = qnorm(zfa), zhit =qnorm(zhit))
+#
+# ggplot(results,aes(zfa,zhit))+
+#   geom_point() +
+#   geom_abline(slope=1,intercept=0)+
+#   scale_y_continuous(name="pgumbel(hit = qgumbel(fa) + d)")+
+#   scale_x_continuous(name="qgumbel(fa)")+
+#   coord_cartesian(xlim=c(-4,4),ylim=c(-4,4))
+#
+#
+# ggplot(res2,aes(zfa,zhit))+
+#   geom_point() +
+#   geom_abline(slope=1,intercept=0)+
+#   scale_y_continuous(name="pgumbel(hit = qgumbel(fa) + d)")+
+#   scale_x_continuous(name="pgumbel(qgumbel(fa))")+
+#   coord_cartesian(xlim=c(0,1),ylim=c(0,1))
+#
+#
+# ggplot(res3,aes(zfa,zhit))+
+#   geom_line() +
+#   geom_abline(slope=1,intercept=0)+
+#   scale_y_continuous(name="qnorm(pgumbel(hit = qgumbel(fa) + d))")+
+#   scale_x_continuous(name="qnorm(pgumbel(qgumbel(fa)))")+
+#   coord_cartesian(xlim=c(-4,4),ylim=c(-4,4))
+#
+#
+# res2
+#
+# se <- res2$zhit# rocs %>% filter(oldnew=="Old") %>% .$roc #roc$sensitivities #hit rate
+# sp <- res2$zfa#rocs %>% filter(oldnew=="New") %>% .$roc #roc$specificities #fa rate
+#
+#
+# diffs.x <- sp[-1] - sp[-length(sp)]
+# means.vert <- (se[-1] + se[-length(se)])/2
+# auc <- sum(means.vert * diffs.x)
+# auc

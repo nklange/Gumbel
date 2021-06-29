@@ -116,8 +116,8 @@ for (subj in unique(CVTraining$id)){
       if (nrow(TrainData) > 0){
         HoldOutData <- SubjTest %>% filter(Fold == i)
 
-        TrainData$CVLL <- PredictHoldOutSz(TrainData,modelN,HoldOutData)
-        print(TrainData$CVLL)
+        TrainData$CVLL <- PredictCVHoldout(TrainData,modelN,HoldOutData)
+
         PredictCV <- bind_rows(PredictCV,TrainData)
       }
     }
@@ -127,5 +127,5 @@ for (subj in unique(CVTraining$id)){
 }
 }
 
-saveRDS(PredictCV,file = "Fits/CV10FoldAlt_TestLL.rds")
+saveRDS(PredictCV,file = "CV10Fold_TestLL.rds")
 

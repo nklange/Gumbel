@@ -3,9 +3,14 @@ library("ggplot2")
 library("cowplot")
 library("stringr")
 
-source("preprocess_data.R")
+
 source("FitUVSDT.R")
 
+calcDArms <- function(meanold,meannew,sdold,sdnew){
+
+  (meanold - meannew)/sqrt(mean(c(sdold,sdnew))^2)
+
+}
 
 # check out a reasonable range of parameter estimates
 
@@ -20,9 +25,9 @@ load_files <- function(path,pattern) {
 
 fits <- load_files("Fits2/","fit")
 
-
+genmodel <- "ExGaussNormEVSDT"
 bestfit <- fits %>%
-  mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
+ # mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
   mutate(AIC = 2 * npar + 2 * objective) %>%
   group_by(model,id,condition) %>%
   arrange(objective) %>%
@@ -30,24 +35,23 @@ bestfit <- fits %>%
 
 
 datas <- bestfit %>%
-  filter(model %in% c("GumbelEVSDT")) %>% group_by(condition) %>%
-  filter(muo > mean(muo) - 3 * sd(muo)) %>%
+  filter(model %in% genmodel) %>% group_by(condition) %>%
   mutate(strength = ifelse((condition == "A" | condition == "B"), "high","low"),
          variability = ifelse((condition == "A" | condition == "C"), "high","low")) %>%
   group_by(exp,condition,model) %>%
-  select(c(model,id,condition,muo,c1,dc1,dc2,dc3,dc4)) %>% ungroup() %>%
+  select(c(model,id,condition,muo,betao,c1,dc1,dc2,dc3,dc4)) %>% ungroup() %>%
   pivot_longer(!c(exp,model,id,condition),names_to = "parameter",values_to="value") %>%
   group_by(parameter) %>%
   filter(value < quantile(value,.975) & value > quantile(value,.025)) %>%
   spread(parameter,value) %>%
   drop_na() %>%
   select(-c(exp,model,id,condition)) %>%
-  select(names(get_start_par("GumbelEVSDT")))
+  select(names(get_start_par(genmodel)))
 
 # for each model: identify mean/sd of paramaters and correlations between them
 
 correlations <- cor(datas)
-means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
+means <- as.numeric(t(datas %>% mutate_all(median) %>% .[1,])[,1])
 sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1])
 sigmas <- sds %*% t(sds) * correlations
 
@@ -71,29 +75,32 @@ parameters <- tmvtnorm::rtmvnorm(n=1000, mean = means, sigma=sigmas,
 # then sample groups across range of 0 - 5 mu
 
 correlations <- cor(datas)
-means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
-means[1] <- means[1] - 1.5
+means <- as.numeric(t(datas %>% mutate_all(median) %>% .[1,])[,1])
+means[1] <- means[1] + 1.5
 sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1]) * 2
+sds <-
 sigmas <- sds %*% t(sds) * correlations
 
 
 parameters2 <- tmvtnorm::rtmvnorm(n=100000, mean = means, sigma=sigmas,
-                                 lower=c(-Inf,-Inf,0,0,0,0),
+                                 lower=c(-Inf,0,-Inf,0,0,0,0),
                                  upper=rep(Inf,length(means)),
                                  algorithm="gibbs",
                                  burn.in.samples=1000,
                                  thinning = 100)
 
-parametersext <- bind_rows(as_tibble(parameters2) %>% filter(V1 < -4.5 & V1 > -5) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -4 & V1 > -4.5) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -3.5 & V1 > -4) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -3 & V1 > -3.5) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -2.5 & V1 > -3) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -2 & V1 > -2.5) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -1.5 & V1 > -2) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -1 & V1 > -1.5) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < -0.5 & V1 > -1) %>% dplyr::slice(1:200),
-          as_tibble(parameters2) %>% filter(V1 < 0 & V1 > -0.5) %>% dplyr::slice(1:200))
+parametersext <- bind_rows(as_tibble(parameters2) %>% filter(V1 > 4.5 & V1 < 5) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 4 & V1 < 4.5) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 3.5 & V1 < 4) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 3 & V1 < 3.5) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 2.5 & V1 < 3) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 2 & V1 < 2.5) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 1.5 & V1 < 2) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 1 & V1 < 1.5) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 0.5 & V1 < 1) %>% dplyr::slice(1:200),
+          as_tibble(parameters2) %>% filter(V1 > 0 & V1 < 0.5) %>% dplyr::slice(1:200))
+
+saveRDS(parametersext,file="simulate_genExGaussNormEVSDT_parametervalues_mvnext_median.rds")
 
 # Genpar: uniform --------------------------------------------------------------
 
@@ -106,45 +113,42 @@ parametersunif <- tibble(muo = runif(nmatch,min=-5,max=.Machine$double.eps),
        dc3 = runif(nmatch,min=.01,2),
        dc4 = runif(nmatch,min=.01,2))
 
-# Simulate from Gumbel and fit with UVSDT
-
-genmodel <- "GumbelEVSDT"
-
-
-
 # Genpar: keep crit ------------------------------------------------------------
 
-extparvalues<-readRDS(file="simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
+extparvalues<-readRDS(file="SimulationData/simulate_genExGaussNormEVSDT_parametervalues_mvnext.rds")
 
 set.seed(1)
 somecritsamples <- sample(1:2000,50)
 keepcrits <- extparvalues[somecritsamples,] %>%
+  set_colnames(names(get_start_par(genmodel))) %>%
   mutate(critnum = c(1:50)) %>%
   select(-muo) %>%
   dplyr::slice(rep(1:n(),each=26)) %>%
-  mutate(muo = rep(seq(-5,0,0.2),50),
+  mutate(muo = rep(seq(0,5,0.2),50),
          munum = rep(1:26,50)) %>%
-  mutate(parid = paste0("genGumbelEVSDT_extcrit",critnum,"_mu",munum) ) %>%
+  mutate(parid = paste0("genExGaussNormVSDT_extcrit",critnum,"_mu",munum) ) %>%
   select(-critnum,-munum)
 
-#saveRDS(keepcrits,file="simulate_genGumbelEVSDT_parametervalues_keepcrits.rds")
+saveRDS(keepcrits,file="SimulationData/simulate_genExGaussNorm_parametervalues_keepcrits.rds")
 
 # Simulate data ----------------------------------------------------------------
 
 simulation <- NULL
-parametertibble <- NULL
+parametersext <- extparvalues#readRDS("SimulationData/simulate_genExGaussNorm_parametervalues_keepcrits.rds") %>%
+ # relocate(muo)
+
 
 for(i in c(1:dim(parametersext)[[1]])){
 
   for(j in c(2:51)){ # for each set of values, make 50 small-N datasets
 
 id <- paste0("gen",genmodel,"_extpar",i,"_set",j)
-#id <- paste0("gen",genmodel,"_unifpar",i,"_set1")
-parid <- paste0("gen",genmodel,"_extpar",i)
-pars <- parametersext[i,]#parameters[i,]
+#id <- paste0(parametersext[i,]$parid,"_set1")
+parid <-paste0("gen",genmodel,"_extpar",i)# parametersext[i,]$parid#
+pars <- as.numeric(parametersext[i,])#parameters[i,]
 
 
-sim <- PredictSDT(data = NULL, model = "GumbelEVSDT",par = pars,
+sim <- PredictSDT(data = NULL, model = "ExGaussNormEVSDT",par = pars,
            itemspertype = c(100,100))
 
 # itemspertype choice as a LargeN (50000) and standard-experiment (100)
@@ -167,11 +171,11 @@ simtibble <- sim %>% mutate(id = id,
 simulation <- simulation %>% bind_rows(simtibble)
 #parametertibble <- parametertibble %>% bind_rows(partibble)
 
-}
 
 }
+}
 
-saveRDS(simulation,file="simulate_genGumbelEVSDT_data_trials200_mvnext.rds")
+saveRDS(simulation,file="simulate_genExGaussNormEVSDT_data_LOWN.rds")
 #saveRDS(parametertibble,file="simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
 
 # Fitting routine for server --------------------------------------------------
@@ -524,14 +528,17 @@ lm_eqn_poly1 <- function(df){
   as.character(as.expression(eq));
 }
 
-fits <- load_files("FitsSimulationExt/","gen")
-fits2 <-load_files("FitSimulationGumbelUVSDT/","gen")
-bestfit <- bind_rows(fits,fits2) %>%
-  mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
-  mutate(AIC = 2 * npar + 2 * objective) %>%
-  group_by(model,id) %>%
-  arrange(objective) %>%
-  dplyr::slice(1)
+bestfit <- readRDS("SimulationFits/genGumbelEVSDT_LARGEN_bestfits.rds")
+
+
+# bestfit <- bind_rows(fits,fits2) %>%
+#   mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
+#   mutate(AIC = 2 * npar + 2 * objective) %>%
+#   group_by(model,id) %>%
+#   arrange(objective) %>%
+#   dplyr::slice(1)
+
+
 
 # Analyse correlation r(mu_o, sig_o) in UVSDT fits of Gumbel-generated data
 
@@ -568,7 +575,7 @@ uvsdtmuosigo <- ggplot(bestfit %>% filter(model == "GaussianUVSDT"),aes(x=muo,y=
   # geom_smooth(method=lm,formula=y~x + I(x^2),color="blue",size=1, se=T)+
   # geom_smooth(method=lm,formula=y~x + I(x^2)  + I(x^3),color="green",size=1, se=T)+
 
-  scale_x_continuous(name=expression(paste("d' (estimated by UVSDT)")),limits=c(-0.5,15),breaks = c(0:15))+
+  scale_x_continuous(name=expression(paste(mu[o], "(estimated by UVSDT)")),limits=c(-0.5,15),breaks = c(0:15))+
   scale_y_continuous(name=expression(paste(sigma[o]," (estimated by UVSDT)")),limits=c(0,8))+
   theme(
     axis.text = element_text(size=12),
@@ -583,12 +590,20 @@ uvsdtmuosigo <- ggplot(bestfit %>% filter(model == "GaussianUVSDT"),aes(x=muo,y=
     strip.text = element_text(size = 12))
 
 
-parametervals <- readRDS(file="simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
+parametervals <- readRDS(file="SimulationData/simulate_genGumbelEVSDT_parametervalues_mvnext.rds")
 
 
+
+
+exgaussbeta <- bestfit %>% filter(model == "ExGaussNormEVSDT") %>% select(id,betao) %>% mutate(id = str_remove(id,"_set1")) %>%
+  arrange(id) %>% .$betao
+
+exgaussest <- bestfit %>% filter(model == "ExGaussNormEVSDT") %>% select(id,muo) %>% mutate(id = str_remove(id,"_set1")) %>%
+  arrange(id) %>% .$muo + exgaussbeta
+
+exgausssigma <- sqrt(1 + 1/((1/exgaussbeta)^2))
 gumbelest <- bestfit %>% filter(model == "GumbelEVSDT") %>% select(id,muo) %>% mutate(id = str_remove(id,"_set1")) %>%
   arrange(id) %>% .$muo
-
 
 gumbeluvsdtest <- bestfit %>% filter(model == "GumbelUVSDT") %>% select(id,muo) %>% mutate(id = str_remove(id,"_set1")) %>%
   arrange(id) %>% .$muo
@@ -610,35 +625,85 @@ uvsdtfit <- bestfit %>% filter(model == "GaussianUVSDT") %>% select(id,message) 
   arrange(id) %>% .$message
 
 
+uvsdtfitdprime <- calcDArms(uvsdtest,0,uvsdtsigma,1)
+exgaussdprime <- calcDArms(exgaussest,0,exgausssigma,1)
+
 compareboths <- parametervals %>% select(parid,muo) %>% arrange(parid) %>% mutate(muo = -muo)
 
+modelorder <- c("Gumbel (free sigma[o])","Gumbel","UVSDT","ExGauss-Norm EVSDT")
 recoveringmu <- bind_rows(compareboths,compareboths,
-                          compareboths) %>% mutate(muo_estimate = c(-gumbeluvsdtest,-gumbelest,uvsdtest),
+                          compareboths,compareboths) %>%
+  mutate(muo_estimate = c(-gumbeluvsdtest,-gumbelest,uvsdtest,exgaussest),
                                                              #   message = c(gumbelfit,uvsdtfit),
                                                                 model = c(rep("Gumbel (free sigma[o])",2000),
-                                                                          rep("Gumbel EVSDT",2000),
-                                                                          rep("UVSDT",2000)))
+                                                                          rep("Gumbel",2000),
+                                                                          rep("UVSDT",2000),
+                                                                          rep("ExGauss-Norm EVSDT",2000))) %>%
+  mutate(model = factor(model,levels=modelorder))
 
 recoveringsigma <- bind_rows(compareboths,compareboths,
-                          compareboths) %>% mutate(sigo_estimate = c(gumbeluvsdtsigma,
+                          compareboths,compareboths) %>% mutate(sigo_estimate = c(gumbeluvsdtsigma,
                                                                     rep(pi/sqrt(6),2000),
-                                                                    uvsdtsigma),
+                                                                    uvsdtsigma,
+                                                                    exgausssigma),
                                                    #   message = c(gumbelfit,uvsdtfit),
                                                    model = c(rep("Gumbel (free sigma[o])",2000),
                                                              rep("Gumbel",2000),
-                                                             rep("UVSDT",2000)))
+                                                             rep("UVSDT",2000),
+                                                             rep("ExGauss-Norm EVSDT",2000))
+                                                   ) %>%
+  mutate(model = factor(model,levels=modelorder))
+
+recoveringdprime <- bind_rows(compareboths,compareboths) %>% mutate(dprime_estimate = c(uvsdtfitdprime,exgaussdprime),
+                                                       #   message = c(gumbelfit,uvsdtfit),
+                                                       model = c(rep("UVSDT",2000),
+                                                                 rep("ExGauss-Norm EVSDT",2000))) %>%
+  mutate(model = factor(model,levels=modelorder))
+
+
 muoestimateall <- ggplot(recoveringmu ,
                          aes(y=muo_estimate,
                              x=muo,color=model))+
   geom_point(aes(y=muo_estimate,
                  x=muo,color=model),alpha=0.3) +
-  scale_color_manual(name = "Fitted model",values = c("#CC79A7","#009E73","#E69F00"),
+  scale_color_manual(name = "Fitted model",values = c("#CC79A7","#009E73","#E69F00","#000000"),
                      labels=c(expression(paste("Gumbel (free ", sigma[o],")")),
                               expression(paste("Gumbel")),
+                              expression(paste("UVSDT")),
+                              expression(paste("ExGauss-Norm"))))+
+  # geom_point(data = compareboths, aes(x = muo, y = muo_est_gumbel), alpha=0.1,color="blue") +
+  scale_x_continuous(name=expression(paste("|",mu[o] - mu[n],"| (Gumbel, generating value)")),limits=c(-0.5,5.5),breaks = c(0:5))+
+  scale_y_continuous(name=expression(paste("estimated |", mu[o] - mu[n],"|")),limits=c(-0.5,15),breaks = c(0:15))+
+  guides(color = guide_legend(override.aes = list(size = 3,
+                                                  alpha = 1))) +
+
+  #annotate("text",x = 0,y=10,label=paste("2000/2000 data sets"), hjust = 0)+
+  theme(
+    axis.text = element_text(size=12),
+
+    #legend.position = legendpos,
+    panel.background = element_rect(fill = "white"),
+    panel.border = element_rect(fill = "transparent",colour="black"),
+    strip.placement = "outside",
+    legend.position = c(0.3,0.7),
+    legend.text.align = 0,
+
+    legend.key = element_rect(fill = "transparent"),
+    strip.background = element_rect(fill = "transparent",
+                                    colour="transparent"),
+    strip.text = element_text(size = 12))
+
+ggplot(recoveringdprime ,
+       aes(y=dprime_estimate,
+           x=muo,color=model))+
+  geom_point(aes(y=dprime_estimate,
+                 x=muo,color=model),alpha=0.3) +
+  scale_color_manual(name = "Fitted model",values = c("#E69F00","#000000"),
+                     labels=c(
                               expression(paste("UVSDT"))))+
   # geom_point(data = compareboths, aes(x = muo, y = muo_est_gumbel), alpha=0.1,color="blue") +
-  scale_x_continuous(name=expression(paste(-d,"'"," (Gumbel, generating value)")),limits=c(-0.5,5.5),breaks = c(0:5))+
-  scale_y_continuous(name=expression(paste("estimated ", d,"'")),limits=c(-0.5,15),breaks = c(0:15))+
+  scale_x_continuous(name=expression(paste("|",mu[o] - mu[n],"| (Gumbel, generating value)")),limits=c(-0.5,5.5),breaks = c(0:5))+
+  scale_y_continuous(name=expression(paste("estimated ", d[a])),limits=c(-0.5,15),breaks = c(0:15))+
   guides(color = guide_legend(override.aes = list(size = 3,
                                                   alpha = 1))) +
 
@@ -663,8 +728,10 @@ sigoestimateall <- ggplot(recoveringsigma,
                              x=muo))+
   geom_point(data = recoveringsigma %>% filter(model != "Gumbel"), aes(y=sigo_estimate,
                  x=muo,color=model),alpha=0.3) +
-  scale_color_manual(name = "Fitted model",values = c("#CC79A7","#E69F00"),
-                     labels=c(expression(paste("Gumbel (free ", sigma[o],")")),expression(paste("UVSDT"))))+
+  scale_color_manual(name = "Fitted model",values = c("#CC79A7","#E69F00","#000000"),
+                     labels=c(expression(paste("Gumbel (free ", sigma[o],")")),
+                              expression(paste("UVSDT")),
+                              expression(paste("ExGauss-Norm"))))+
   geom_line(data =  recoveringsigma %>% filter(model == "Gumbel"),
             aes(y=sigo_estimate, x=muo,linetype=model),color="#009E73",size=1)+
   scale_linetype_manual(name = "Generating model",values="dashed")+
@@ -673,7 +740,7 @@ sigoestimateall <- ggplot(recoveringsigma,
          linetype = guide_legend(override.aes = list(size = 1,
                                                   alpha = 1) ) ) +
   # geom_point(data = compareboths, aes(x = muo, y = muo_est_gumbel), alpha=0.1,color="blue") +
-  scale_x_continuous(name=expression(paste(-d,"'"," (Gumbel, generating value)")),limits=c(0,5.5),
+  scale_x_continuous(name=expression(paste("|",mu[o] - mu[n],"| (Gumbel, generating value)")),limits=c(0,5.5),
                      breaks = c(0:5))+
   scale_y_continuous(name=expression(paste("estimated ", sigma[o])),limits=c(0,8),breaks = c(0:8))+
   #annotate("text",x = 0,y=10,label=paste("2000/2000 data sets"), hjust = 0)+
@@ -684,7 +751,7 @@ sigoestimateall <- ggplot(recoveringsigma,
     panel.background = element_rect(fill = "white"),
     panel.border = element_rect(fill = "transparent",colour="black"),
     strip.placement = "outside",
-    legend.position = c(0.3,0.7),
+    legend.position = c(0.1,0.7),
     legend.text.align = 0,
     legend.key = element_rect(fill = "transparent"),
     strip.background = element_rect(fill = "transparent",
@@ -729,7 +796,11 @@ set.seed(1)
 criticalsets <- paste0(rep("set",10),sample(2:51,10))
 
 critsets <- paste0("genGumbelEVSDT_",rep(criticalpar,each=10),"_",criticalsets)
-bestfit <- readRDS("genGumbel_trials200_bestfit.rds") %>% filter(id %in% critsets)
+
+
+
+
+setdiff(critsets,bestfit %>% filter(model == "ExGaussNormEVSDT") %>% .$id)
 
 # Analyse correlation r(mu_o, sig_o) in UVSDT fits of Gumbel-generated data
 
@@ -1002,7 +1073,7 @@ LOWN <- plot_grid(muoestimateall,sigoestimateall,uvsdtmuosigo,rel_widths = c(1,1
 fits <- load_files("FitSimulation_keepcrit_largeN/","gen")
 parametervals <- readRDS(file="simulate_genGumbelEVSDT_parametervalues_keepcrits.rds")
 
-critids <-rep(str_sort(rep(paste0(rep("genGumbelEVSDT_extcrit",50),c(1:50)),each=26)),3)
+critids <-rep(str_sort(rep(paste0(rep("genGumbelEVSDT_extcrit",50),c(1:50)),each=26)),4)
 
 
 bestfit <- fits %>%
@@ -1011,10 +1082,14 @@ bestfit <- fits %>%
   group_by(model,id) %>%
   arrange(objective) %>%
   dplyr::slice(1) %>%
-  arrange(model,id) %>%
-  bind_cols(critid = critids)
+  arrange(model,id)
 
+bestfit2 <- readRDS("genGumbel_ExGauss_bestfit_KEEPCRITS.rds")
 
+best <- bind_rows(bestfit,bestfit2) %>%  bind_cols(critid = critids)
+
+best <- readRDS("genUVSDT_bestfit_KEEPCRITS.rds")
+saveRDS(best,file="SimulationFits/genGaussianUVSDT_KEEPCRITS_bestfits.rds")
 
 # Analyse correlation r(mu_o, sig_o) in UVSDT fits of Gumbel-generated data
 
@@ -1253,7 +1328,7 @@ plot_grid(LargeN,LOWN,samecrit,labels=c("A","B","C"),nrow=3)
 
 #ggsave("Gumbelsimulation_extmvn.png", units="cm", width=30, height=30, dpi=600)
 
-# % Best recovered by AIC ------------------------------------------------------
+# % Model mimicry ------------------------------------------------------
 
 # LargeN - extmvn
 fits <- load_files("FitSimulation_keepcrit_largeN/","gen")

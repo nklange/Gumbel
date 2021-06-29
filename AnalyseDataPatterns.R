@@ -31,7 +31,7 @@ for(subj in unique(testphase$id)){
   for(cond in unique(testphase$condition)){
 
 
-    dp <- prep_data(testphase %>% filter(id == subj) %>% filter(condition == cond))
+    dp <- prep_data(testphase %>% filter(id == subj) %>% filter(condition == cond),freqdat=F)
 
     ind <- tibble(rating = as.character(rep(dp$confidence,2)),
                   oldnew = rep(c("New","Old"),each= 6),
@@ -51,9 +51,9 @@ incompletes <- frequencies %>% mutate(freq0 = ifelse(freq == 0,0,1))
 # find misfits
 
 colorthings <- bestfit %>% mutate(freq0 = case_when(
-  model == "GumbelEVSDT" & delAIC > 10 ~ 3,
-  model == "GaussianEVSDT" & delAIC > 10 ~ 4,
-  model == "GaussianUVSDT" & delAIC > 10 ~ 5,
+  model == "GumbelEVSDT" & delAIC > 2 ~ 3,
+  model == "GaussianEVSDT" & delAIC > 2 ~ 4,
+  model == "GaussianUVSDT" & delAIC > 2 ~ 5,
   TRUE ~ 2
 )) %>% mutate(rating = case_when(model == "GumbelEVSDT" ~ "1",
                                  model == "GaussianEVSDT" ~ "2",
@@ -76,8 +76,8 @@ ggplot(data = responses %>% filter(exp == "SB2021_e2") %>% filter(condition == "
 
   #geom_text(aes(label = round(delAIC)),size = 3.5) +
   scale_fill_manual(values = c("#ffff00","#000000","#ffffff","#ff0000","#00ff00","#0000ff"),
-                    labels = c("no responses","responses",NA,"Gumbel > 10","GaussianEVSDT > 10",
-                               "GaussianUVSDT > 10"))+
+                    labels = c("no responses","responses",NA,"Gumbel > 2","GaussianEVSDT > 2",
+                               "GaussianUVSDT > 2"))+
   scale_x_discrete(position = "top",name = "id") +
   scale_y_discrete(labels = c("New","Old","Delta AIC"))+
 

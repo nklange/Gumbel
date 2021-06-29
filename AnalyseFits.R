@@ -4,6 +4,8 @@ library("cowplot")
 
 source("preprocess_data.R")
 
+
+
 # Model fitting ----------------------------------------------------------------
 
 source("FitUVSDT.R")
@@ -11,19 +13,18 @@ models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT")
 
 for (model in models){
 
-  model <- "ExGaussNormEVSDT"
+  model <- "GumbelEVSDT"
 
   for(subjid in unique(testphase$id)){
   # for(experiment in c("SB2021_e1","SB2021_e2")){
     fullsubj <- NULL
     for(cond in c("A","B","C","D")){
 
-
       data <- testphase %>% filter(id == subjid) %>% filter(condition==cond)
 
 
 
-      fit <- FitSDT(data = data, model = model, rep=20, freqdat = F) %>% mutate(condition = cond)
+    fit <- FitSDT(data = data, model = model, rep=20, freqdat = F) %>% mutate(condition = cond)
 
       fullsubj <- fullsubj %>% bind_rows(fit)
     }
@@ -460,6 +461,7 @@ allfits <- bestfit %>%
   filter(model %in% models) %>%
   group_by(exp,id,condition) %>%
   mutate(delAIC = AIC - min(AIC)) %>%
+  mutate()
   filter(condition == "D") %>%
   filter(exp == "SB2021_e1")
 
