@@ -25,7 +25,7 @@ load_files <- function(path,pattern) {
 
 fits <- load_files("Fits2/","fit")
 
-genmodel <- "ExGaussNormEVSDT"
+genmodel <- "GumbelEVSDT"
 bestfit <- fits %>%
  # mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
   mutate(AIC = 2 * npar + 2 * objective) %>%
@@ -39,7 +39,7 @@ datas <- bestfit %>%
   mutate(strength = ifelse((condition == "A" | condition == "B"), "high","low"),
          variability = ifelse((condition == "A" | condition == "C"), "high","low")) %>%
   group_by(exp,condition,model) %>%
-  select(c(model,id,condition,muo,betao,c1,dc1,dc2,dc3,dc4)) %>% ungroup() %>%
+  select(c(model,id,condition,muo,c1,dc1,dc2,dc3,dc4)) %>% ungroup() %>%
   pivot_longer(!c(exp,model,id,condition),names_to = "parameter",values_to="value") %>%
   group_by(parameter) %>%
   filter(value < quantile(value,.975) & value > quantile(value,.025)) %>%
@@ -51,7 +51,7 @@ datas <- bestfit %>%
 # for each model: identify mean/sd of paramaters and correlations between them
 
 correlations <- cor(datas)
-means <- as.numeric(t(datas %>% mutate_all(median) %>% .[1,])[,1])
+means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
 sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1])
 sigmas <- sds %*% t(sds) * correlations
 
@@ -61,12 +61,13 @@ sigmas <- sds %*% t(sds) * correlations
 # Genpar: mvn from par estimates ------------------------------------------------
 
 set.seed(1)
-parameters <- tmvtnorm::rtmvnorm(n=1000, mean = means, sigma=sigmas,
+parameters <- tmvtnorm::rtmvnorm(n=2000, mean = means, sigma=sigmas,
                                  lower=c(-Inf,-Inf,0,0,0,0),
                                  upper=rep(Inf,length(means)),
                                  algorithm="gibbs",
                                  burn.in.samples=1000,
                                  thinning = 100)
+saveRDS(parameters,file="SimulationData/simulate_genGumbelEVSDT_parametervalues.rds")
 
 # Genpar: ext mvn from par estimates --------------------------------------------
 #rejectionsampling: for range of generating mu
@@ -75,10 +76,10 @@ parameters <- tmvtnorm::rtmvnorm(n=1000, mean = means, sigma=sigmas,
 # then sample groups across range of 0 - 5 mu
 
 correlations <- cor(datas)
-means <- as.numeric(t(datas %>% mutate_all(median) %>% .[1,])[,1])
-means[1] <- means[1] + 1.5
+means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
+#means[1] <- means[1] + 1.5
 sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1]) * 2
-sds <-
+
 sigmas <- sds %*% t(sds) * correlations
 
 
