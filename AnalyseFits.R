@@ -400,6 +400,91 @@ DeltaAIC <- propbestfit(models_charvector,
                               bestfit)
 
 
+testdat <- bestfit %>% dplyr::select(exp,condition,model,objective,AIC) %>%
+  filter(model %in% c("GaussianUVSDT","ExGaussNormEVSDT","GumbelEVSDT")) %>%
+  mutate(objective = 2 * objective)
+
+
+maketable <- testdat %>%
+    pivot_longer(cols = c("objective","AIC"),names_to = "penalty",values_to="value") %>%
+    group_by(exp,condition,penalty,id) %>%
+    mutate(winning = ifelse(value == min(value),1,0)) %>%
+    group_by(exp,condition,penalty,model) %>%
+    summarize(num = sum(winning),
+              meanval = mean(value)) %>%
+    group_by(exp,condition,penalty) %>%
+    mutate(winprop = num/sum(num))
+
+
+winningprop <- maketable %>%
+  mutate(model = case_when(model == "GumbelEVSDT" ~ "sayA",
+                           model == "ExGaussNormEVSDT" ~ "sayB",
+                           TRUE~"sayC")) %>% ungroup() %>% dplyr::select(-num,-meanval) %>%
+  rename("value" = winprop) %>% mutate(type="Winprop")
+
+meanvalues <- maketable %>%
+  mutate(model = case_when(model == "GumbelEVSDT" ~ "sayA",
+                           model == "ExGaussNormEVSDT" ~ "sayB",
+                           TRUE~"sayC")) %>% ungroup() %>% dplyr::select(-num,-winprop) %>%
+  rename("value" = meanval) %>%
+  group_by(exp,condition,penalty) %>%
+  mutate(value = value - min(value)) %>%
+  mutate(type="Ave")
+
+total <- bind_rows(winningprop,meanvalues) %>%
+  mutate(penalty = factor(penalty,levels=c("objective","AIC"),
+                          labels=c("-2LL","AIC")))
+
+
+Exp1 <- ggplot(total %>% filter(exp == "SB2021_e1"),aes(y = type,x = model)) +
+  geom_tile(color="white",fill="white") +
+
+  geom_text(aes(label=ifelse(type=="Winprop" & value != 0,
+                             stringr::str_remove(round(value,2), "^0+"),
+                            paste(round(value,2)))),size=4)+
+  scale_x_discrete(position = "top",name="Recovered (% winning)",labels=c("Gumbel","EGNorm","UVSDT"))+
+  scale_y_discrete(position = "left",
+                   name="Generating",labels = c(expression(paste(Delta,frac(1,N),Sigma)),"% Winning"))+
+
+  facet_grid(penalty~condition)+
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=10),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        legend.position = "none",
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+
+Exp2 <- ggplot(total %>% filter(exp == "SB2021_e2"),aes(y = type,x = model)) +
+  geom_tile(color="white",fill="white") +
+
+  geom_text(aes(label=ifelse(type=="Winprop" & value != 0,
+                             stringr::str_remove(round(value,2), "^0+"),
+                             paste(round(value,2)))),size=4)+
+  scale_x_discrete(position = "top",name="Recovered (% winning)",labels=c("Gumbel","EGNorm","UVSDT"))+
+  scale_y_discrete(position = "left",
+                   name="Generating",labels = c(expression(paste(Delta,frac(1,N),Sigma)),"% Winning"))+
+
+  facet_grid(penalty~condition)+
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=10),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        legend.position = "none",
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+
+plot_grid(Exp1,Exp2,nrow=1,labels=c("Exp 1","Exp 2"))
+ggsave(paste0("EmpiricalData.png"), units="cm", width=45, height=10, dpi=600)
+
 differences <- bestfit %>%
   filter(model %in% models_charvector) %>%
   mutate(model = factor(model,levels = models)) %>%
@@ -627,3 +712,5 @@ meanparameters <- bestfit %>%
             sdmuo = sd(muo),
             meansigo = mean(sigo),
             sdsigo = sd(sigo))
+
+

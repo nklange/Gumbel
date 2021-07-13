@@ -2,6 +2,24 @@
 # i.e. to what extent need which models be penalized to find the optimal decision rule
 # in other words, how mimic-y are models even under the optimal decision rule
 
+
+
+GetGsquared <- function(LL,observedData){
+
+
+  temp <- c(observedData[1:6] * log(observedData[1:6]/sum(observedData[1:6])),
+            observedData[7:12] * log(observedData[7:12]/sum(observedData[7:12])))
+  temp[observedData == 0] <- 0
+
+  GSq = 2*(LL - -sum(temp) ) # Calculate G^2 (better approximator to Chi-sq dist than Pearson Chi-Sq)
+  # f$df     <- length(observedData)-length(names(get_start_par(model)))-1            # df model (L&F,p.63) n_observations - n_freeparas - 1
+  #f$pGSq   <- 1-pchisq(f$GSq,f$df)       # p value of GSq
+
+
+
+  return(GSq)
+}
+
 MimicryFits <- NULL
 for (gen in c("genGumbelEVSDT","genGaussianUVSDT","genExGaussNormEVSDT")){
 
@@ -77,13 +95,17 @@ MimicryFits <- MimicryFits %>% bind_rows(getGsquaredvals)
 # testdat <- MimicryFits %>% dplyr::select(genmodel,id,model,Gsq,objective,Dev,AIC) %>%
 #   unnest(cols=c(Gsq,objective,Dev,AIC))
 
-cond <- "D"
+ cond <- "B"
+# testdat <- MimicryFits %>% dplyr::select(genmodel,condition,id,model,Gsq,objective,Dev,AIC) %>%
+#   unnest(cols=c(Gsq,objective,Dev,AIC))
+
 testdat <- MimicryFits %>% dplyr::select(genmodel,condition,id,model,Gsq,objective,Dev,AIC) %>%
   unnest(cols=c(Gsq,objective,Dev,AIC))
 
-#excludeids<-unique(allfits %>% filter(message != "relative convergence (4)") %>% .$id)
-
-#allfits <- allfits %>% filter(!id %in% excludeids)
+#  excludeids<-unique(MimicryFits %>% .$fit %>% bind_rows() %>% filter(message != "relative convergence (4)") %>% .$id)
+# #
+#  MimicryFits <- MimicryFits %>% filter(!id %in% excludeids)
+# testdat <- testdat %>% filter(!id %in% excludeids)
 
 testdat <- testdat %>% filter(model %in% c("GaussianUVSDT","ExGaussNormEVSDT",
                                                                       "GumbelEVSDT"),
@@ -102,7 +124,8 @@ custompenalty_pair <- function(data,par,modelpair){
   calc<-data %>%
     mutate(penobjective = case_when(model == modelpair[[2]] ~ objective + par,
                                                  model == modelpair[[1]] ~ objective)) %>%
-    pivot_longer(cols = c("objective","AIC","penobjective"),names_to = "penalty",values_to="value") %>%
+    pivot_longer(cols = c("objective","AIC","penobjective"),
+                 names_to = "penalty",values_to="value") %>%
     group_by(genmodel,penalty,id) %>%
     mutate(winning = ifelse(value == min(value),1,0)) %>%
     group_by(genmodel,penalty,model) %>%
@@ -126,6 +149,7 @@ opt_penalty_maxmeanacc_pair <- function(data,par,modelpair){
 
 }
 
+
 custompenalty <- function(data,par){
 
   UVSDT_pen <- par[[1]]
@@ -137,7 +161,8 @@ calc<-data %>% mutate(penobjective = case_when(model == "GaussianUVSDT" ~ object
   group_by(genmodel,penalty,id) %>%
   mutate(winning = ifelse(value == min(value),1,0)) %>%
   group_by(genmodel,penalty,model) %>%
-  summarize(num = sum(winning)) %>%
+  summarize(num = sum(winning),
+            meanval = mean(value)) %>%
   group_by(genmodel,penalty) %>%
   mutate(winprop = num/sum(num))
 
@@ -200,7 +225,7 @@ resultsMaxAcc <- resultsMaxAcc %>% bind_rows(res2)
 
 
 
-saveRDS(resultsMaxAcc,file=paste0("SimulationFits/optimizeconfusionmatrix_meanacc_cond",cond,".rds"))
+saveRDS(resultsMaxAcc,file=paste0("SimulationFits/optimizeconfusionmatrix_meanacc_condB.rds"))
 #saveRDS(resultsEqual,file="SimulationFits/optimizeconfusionmatrix_equalrecovery.rds")
 
 
@@ -269,10 +294,9 @@ dists <- prepdata %>%
 #   mutate(crit = "nominal = 0",
 #          crittype = "threshold")
 
-
-
-
-maxmean <- optimize(f=opt_penalty_maxmeanacc_pair,data = prepdata,interval = c(-100,100),
+maxmean <- optimize(f=opt_penalty_maxmeanacc_pair,data = prepdata,
+                    interval = c(-50,
+                                 50),
                     modelpair=modelexpression[[i]])
 
 
@@ -366,7 +390,7 @@ A <- ggplot(dists,aes(x=GOFAB))+
 B <- ggplot(tablegraph,aes(y = genmodel,x = model,fill=colorunder)) +
   geom_tile(color="white") +
   scale_fill_manual(values=c("#F0F0F0","white"))+
-  geom_text(aes(label=ifelse(value != 0, ifelse(genmodel=="Accuracy" | abs(value)<.005,
+  geom_text(aes(label=ifelse(value > abs(0.0005), ifelse(genmodel=="Accuracy" | abs(value)<.005,
                                                 stringr::str_remove(round(value,3), "^0+"),
                                                 stringr::str_remove(round(value,2), "^0+")),"0")),size=4)+
   scale_x_discrete(position = "top",name="Recovered",labels=modelnames[[i]])+
@@ -400,20 +424,27 @@ pwplots <- plot_grid(makeplotGOF(2),
 # First: estimate penalties like in two-model case
 
 
-maxacc <-readRDS(paste0("SimulationFits/optimizeconfusionmatrix_meanacc_cond",cond,".rds"))
+maxacc <-readRDS(paste0("SimulationFits/optimizeconfusionmatrix_meanacc_condB.rds"))
 
-optthresh <- maxacc %>% filter(meandiagonal == max(meandiagonal))
+optthresh <- maxacc %>% dplyr::filter(meandiagonal == max(meandiagonal)) %>% dplyr::slice(1)
 penaltybased <- custompenalty(testdat,c(optthresh %>% .$UVSDT_pen,
                                 optthresh %>% .$ExGN_pen))
 
 critmaxdiag <- penaltybased %>%
   mutate(model = case_when(model == "GumbelEVSDT" ~ "sayA",
                            model == "ExGaussNormEVSDT" ~ "sayB",
-                           TRUE~"sayC")) %>% ungroup() %>% dplyr::select(-num) %>%
+                           TRUE~"sayC")) %>% ungroup() %>% dplyr::select(-num,-meanval) %>%
   rename("value" = winprop) %>%
   mutate(genmodel = as.character(genmodel))
 
-
+meanvalues <- penaltybased %>%
+  mutate(model = case_when(model == "GumbelEVSDT" ~ "sayA",
+                           model == "ExGaussNormEVSDT" ~ "sayB",
+                           TRUE~"sayC")) %>% ungroup() %>% dplyr::select(-num,-winprop) %>%
+  rename("value" = meanval) %>%
+  mutate(genmodel = as.character(genmodel)) %>%
+  group_by(genmodel,penalty) %>%
+  mutate(minval = value - min(value))
 
 Accuracy <- penaltybased %>% group_by(penalty) %>%
   filter(genmodel==model) %>%
@@ -435,157 +466,33 @@ Penalty <- penaltybased %>% group_by(penalty) %>% dplyr::select(penalty,model) %
   mutate(genmodel = "YPen")
 
 
-
-# knn
-# riffing on multi-modelPBCM (MMPBCM)  Schultheis & Naidu (2014)
-# CogSci proceedings
-# https://escholarship.org/content/qt7544w9b0/qt7544w9b0.pdf
-
-# don't use difference GOF but use dimensionality of GOF to find
-# use k-nearest-neighbor
-
-
-makeTibbleCM <- function(cm) {
-  tibble(data.frame(num = c(as.numeric(cm[1,c(1:3)]),
-                            as.numeric(cm[2,c(1:3)]),
-                            as.numeric(cm[3,c(1:3)])),
-                    genmodel = rep(row.names(cm),each=3),
-                    model = rep(row.names(cm),3)
-  ))
-
-}
-
-library(caret)
-
-prep <- testdat %>%
-  dplyr::select(-AIC) %>%
-  pivot_wider(names_from="model",id_cols=c("genmodel","id"),values_from="objective")
-
-
-# Splitting data into train
-# and test data
-
-datprep <- prep %>% mutate(split = sample(c("TRUE","FALSE"),size=length(dim(prep)[[1]]),replace=T,prob=c(0.7,0.3))) %>%
-  mutate(genmodel = factor(genmodel)) %>% ungroup() %>% dplyr::select(-id,-split)
-
-set.seed(300)
-#Spliting data as training and test set. Using createDataPartition() function from caret
-indxTrain <- createDataPartition(y = datprep$genmodel,p = 0.75,list = FALSE)
-training <- datprep[indxTrain,] %>% ungroup()
-testing <- datprep[-indxTrain,] %>% ungroup()
-
-set.seed(400)
-ctrl <- trainControl(method="repeatedcv",repeats = 3) #,classProbs=TRUE,summaryFunction = twoClassSummary)
-knnFit <- train(genmodel ~ ., data = training, method = "knn", trControl = ctrl,
-                preProcess = c("center","scale"), tuneLength = 20)
-
-#Output of kNN fit
-knnFit$results
-
-knnPredict <- predict(knnFit,newdata = testing)
-#Get the confusion matrix to see accuracy value and other parameter values
-test <- confusionMatrix( testing$genmodel,knnPredict, dnn = c("Generated", "Recovered"))
-cm <- test$table
-
-
-knnacc <- tibble(value = mean(testing$genmodel==knnPredict)) %>%
-
-                   mutate(model = "sayA") %>%
-                   mutate(genmodel = "ZAcc") %>%
-                    mutate(penalty = "kNN")
-
-knntab <- makeTibbleCM(cm) %>% mutate(penalty = "kNN")
-
-# LDA
-
-library(MASS)
-
-# Estimate preprocessing parameters
-preproc.param <- training %>%
-  preProcess(method = c("center", "scale"))
-# Transform the data using the estimated parameters
-train.transformed <- preproc.param %>% predict(training)
-test.transformed <- preproc.param %>% predict(testing)
-
-model <- lda(genmodel~., data =train.transformed)
-predictions <- model %>% predict(test.transformed)
-
-cm <- table(test.transformed$genmodel,predictions$class)
-ldatab <- makeTibbleCM(cm) %>% mutate(penalty = "LDA")
-
-ldaacc <- tibble(value = mean(test.transformed$genmodel==predictions$class)) %>%
-
-  mutate(model = "sayA") %>%
-  mutate(genmodel = "ZAcc") %>%
-  mutate(penalty = "LDA")
-
-# QDA
-
-model <- qda(genmodel~., data =train.transformed)
-predictions <- model %>% predict(test.transformed)
-# Model accuracy
-mean(predictions$class==test.transformed$genmodel)
-
-model
-
-cm <- table(test.transformed$genmodel, predictions$class)
-qdatab <- makeTibbleCM(cm) %>% mutate(penalty = "QDA")
-
-qdaacc <- tibble(value =mean(predictions$class==test.transformed$genmodel)) %>%
-
-  mutate(model = "sayA") %>%
-  mutate(genmodel = "ZAcc") %>%
-  mutate(penalty = "QDA")
-
-# MDA
-
-library(mda)
-model <- mda(genmodel~., data =train.transformed)
-predicted.classes <- model %>% predict(test.transformed)
-# Model accuracy
-mean(predicted.classes == test.transformed$genmodel)
-
-cm <- table(test.transformed$genmodel, predicted.classes)
-mdatab <- makeTibbleCM(cm) %>% mutate(penalty = "MDA")
-
-mdaacc <- tibble(value =mean(predicted.classes == test.transformed$genmodel)) %>%
-
-  mutate(model = "sayA") %>%
-  mutate(genmodel = "ZAcc") %>%
-  mutate(penalty = "MDA")
-
-
-mlmax <- bind_rows(knntab,ldatab,qdatab,mdatab) %>% group_by(penalty,genmodel) %>%
-  mutate(value = num/sum(num)) %>% dplyr::select(-num) %>%
-  mutate(model = case_when(model == "GumbelEVSDT" ~ "sayA",
-                           model == "ExGaussNormEVSDT" ~ "sayB",
-                           TRUE~"sayC"))
-
-mlaccuracy <- bind_rows(knnacc,ldaacc,qdaacc,mdaacc)
-
-
-
-tablegraph <- bind_rows(critmaxdiag,Accuracy,Penalty,mlmax,mlaccuracy) %>%
-  mutate(penalty = factor(penalty,levels=c("objective","AIC","penobjective","kNN","LDA","QDA","MDA"),
-                          labels=c("-2LL","AIC","Max Acc","k(=17)NN","LDA","QDA","MDA"))) %>%
+tablegraph <- bind_rows(critmaxdiag,Accuracy,Penalty) %>%
+  mutate(penalty = factor(penalty,levels=c("objective","AIC","penobjective"),
+                          labels=c("-2LL","AIC","Max Acc"))) %>%
   # mutate(model = factor(model)) %>%
   mutate(genmodel = factor(genmodel,levels=c("ZAcc","YPen","GaussianUVSDT","ExGaussNormEVSDT","GumbelEVSDT"),
                            labels = c("Accuracy","Penalty","UVSDT","EGNorm","Gumbel"))) %>%
   mutate(colorunder = ifelse(!genmodel %in%c("UVSDT","EGNorm","Gumbel"),1,0)) %>%
   mutate(colorunder = factor(colorunder))
 
-
-
-
-
+tablegraph2 <- bind_rows(meanvalues) %>%
+  mutate(penalty = factor(penalty,levels=c("objective","AIC","penobjective"),
+                          labels=c("-2LL","AIC","Max Acc"))) %>%
+  # mutate(model = factor(model)) %>%
+  mutate(genmodel = factor(genmodel,levels=c("GaussianUVSDT","ExGaussNormEVSDT","GumbelEVSDT"),
+                           labels = c("UVSDT","EGNorm","Gumbel"))) %>%
+  mutate(colorunder = ifelse(!genmodel %in%c("UVSDT","EGNorm","Gumbel"),1,0)) %>%
+  mutate(colorunder = factor(colorunder))
 
 Dgraph <- ggplot(tablegraph,aes(y = genmodel,x = model,fill=colorunder)) +
   geom_tile(color="white") +
   scale_fill_manual(values=c("#E8E8E8","white"))+
   geom_text(aes(label=ifelse(value != 0, ifelse(genmodel=="Accuracy" | abs(value)<.005,
                                                 stringr::str_remove(round(value,3), "^0+"),
-                                                stringr::str_remove(round(value,2), "^0+")),"0")),size=4)+
-  scale_x_discrete(position = "top",name="Recovered",labels=c("Gumbel","EGNorm","UVSDT"))+
+                                                ifelse(!genmodel %in% c("Accuracy","Penalty") &
+                                                         value > 0.005, stringr::str_remove(round(value,2), "^0+"),
+                                                       "0")),"0")),size=4)+
+  scale_x_discrete(position = "top",name="Recovered (% winning)",labels=c("Gumbel","EGNorm","UVSDT"))+
   scale_y_discrete(position = "left",
                    name="Generating")+
   facet_grid(.~penalty)+
@@ -601,55 +508,296 @@ Dgraph <- ggplot(tablegraph,aes(y = genmodel,x = model,fill=colorunder)) +
                                         colour="transparent"),
         strip.text = element_text(size = 12))
 
+Dgraph2 <- ggplot(tablegraph2,aes(y = genmodel,x = model,fill=colorunder)) +
+  geom_tile(color="white") +
+  scale_fill_manual(values=c("#E8E8E8","white"))+
+  geom_text(aes(label = round(minval,2)),size=4)+
+  scale_x_discrete(position = "top",name=expression(paste("Recovered (",Delta,frac(1,N),Sigma,")")),labels=c("Gumbel","EGNorm","UVSDT"))+
+  scale_y_discrete(position = "left",
+                   name="Generating")+
+  facet_grid(.~penalty)+
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_blank(),
+        #axis.title.y = element_text(hjust=0.75),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        strip.placement = "outside",
+        legend.position = "none")
 
 
 #Visualize distributions
 
-testdat <- MimicryFits %>% dplyr::select(genmodel,condition,id,model,Gsq,objective,Dev,AIC) %>%
-  filter(condition == cond) %>% ungroup() %>% dplyr::select(-condition) %>%
+testdat <- MimicryFits %>%
+  #dplyr::select(genmodel,id,model,Gsq,objective,Dev,AIC) %>%
+ dplyr::select(genmodel,condition,id,model,Gsq,objective,Dev,AIC) %>%
+ filter(condition == cond) %>% ungroup() %>% dplyr::select(-condition) %>%
   unnest(cols=c(Gsq,objective,Dev,AIC))
 
 plotty <- testdat %>% mutate(logobj = log(Gsq)) %>% dplyr::select(-AIC,-objective,-Dev,-Gsq) %>%
   mutate(genmodel = factor(genmodel,levels=c("GumbelEVSDT","ExGaussNormEVSDT","GaussianUVSDT"),
-                           labels=c("Gumbel","EGNorm","UVSDT"))) %>%
-  pivot_wider(names_from="model",values_from="logobj") %>%
-  relocate(GumbelEVSDT,before=ExGaussNormEVSDT) %>%
-  rename("Fit: Gumbel"=GumbelEVSDT,
-         "Fit: EGNorm" =ExGaussNormEVSDT,
-         "Fit: UVSDT" =GaussianUVSDT)
+                           labels=c("Gen: Gumbel","Gen: EGNorm","Gen:UVSDT"))) %>%
+  mutate(model = factor(model,levels=c("GumbelEVSDT","ExGaussNormEVSDT","GaussianUVSDT"),
+                           labels=c("Fit: Gumbel","Fit: EGNorm","Fit: UVSDT")))
+
+library(ggridges)
+
+densitypl <- ggplot(plotty, aes(x = logobj,fill=genmodel,y=genmodel))+
+        geom_density_ridges(aes(fill = genmodel),scale=10,alpha=0.9,
+                            quantile_lines = TRUE, quantiles = 2)+
+  scale_x_continuous(name=expression(paste("log(",G^2,")")))+
+          scale_fill_manual(values=c("#56B4E9","#009E73", "#E69F00"),
+                            name= "Generating model",
+                            labels=c("Gumbel","EGNorm","UVSDT"))+
+         facet_grid(.~model)+
+  guides(fill = guide_legend(reverse = TRUE)) +
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=10),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        legend.position = c(0.075,0.6),
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
+densitypl2 <- ggplot(plotty, aes(x = logobj,fill=model,y=model))+
+  geom_density_ridges(aes(fill = model),scale=5,alpha=0.7,
+                      quantile_lines = TRUE, quantiles = 2)+
+  scale_x_continuous(name=expression(paste("log(",G^2,")")))+
+  scale_fill_manual(values=c("#56B4E9","#009E73", "#E69F00"), name= "Fitted model",
+                    labels=c("Gumbel","EGNorm","UVSDT"))+
+  guides(fill = guide_legend(reverse = TRUE)) +
+  facet_grid(.~genmodel)+
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=10),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        legend.position = c(0.075,0.6),
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
 
 
 
-library(GGally)
-p1 <- ggpairs(plotty,columns = c(1,2,5),
-              mapping = ggplot2::aes(color = genmodel),
-              legend = 1,
-              upper = list(continuous = "blank"),
-              lower = list(continuous = wrap("points", alpha = 0.1),
-                           combo = wrap("dot", alpha = 0.4)),
-              diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
-              xlab = expression(paste("log(",G^2,")")),
-              ylab = NULL,
-              axisLabels = c("show"))
+plotty <- testdat %>% mutate(logobj = Gsq) %>% dplyr::select(-AIC,-objective,-Dev,-Gsq) %>%
+  mutate(genmodel = factor(genmodel,levels=c("GumbelEVSDT","ExGaussNormEVSDT","GaussianUVSDT"),
+                           labels=c("Gen: Gumbel","Gen: EGNorm","Gen:UVSDT"))) %>%
+  mutate(model = factor(model,levels=c("GumbelEVSDT","ExGaussNormEVSDT","GaussianUVSDT"),
+                        labels=c("Fit: Gumbel","Fit: EGNorm","Fit: UVSDT")))
 
-    for(i in 1:p1$nrow) {
-    for(j in 1:p1$ncol){
-      p1[i,j] <- p1[i,j] +
-        scale_fill_manual(values=c("#56B4E9","#009E73", "#E69F00"), name= "Generating model") +
-        scale_color_manual(values=c("#56B4E9","#009E73", "#E69F00"), name= "Generating model")
-    }
-  }
+densitypl3 <- ggplot(plotty, aes(x = logobj,fill=model,y=model))+
+  geom_density_ridges(aes(fill = model),scale=5,alpha=0.7,
+                      quantile_lines = TRUE, quantiles = 2)+
+  scale_x_continuous(name=expression(paste(G^2)))+
+  scale_fill_manual(values=c("#56B4E9","#009E73", "#E69F00"), name= "Fitted model",
+                    labels=c("Gumbel","EGNorm","UVSDT"))+
+  guides(fill = guide_legend(reverse = TRUE)) +
+  facet_grid(.~genmodel)+
+  theme(axis.text.y = element_text(size=10),
+        axis.text.x = element_text(size=10),
+        axis.title.y = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = "transparent",colour="black"),
+        strip.placement = "outside",
+        legend.position = c(0.15,0.6),
+        strip.background = element_rect(fill = "transparent",
+                                        colour="transparent"),
+        strip.text = element_text(size = 12))
 
-plotface <- p1 + theme(legend.position = "bottom",
-           panel.background = element_rect(fill = "white"),
 
-           panel.border = element_rect(colour = "black", fill = "transparent"),
-           strip.background = element_rect(fill = "#F0F0F0",color="black"),
-           strip.text = element_text(size=12))
-
-
-plot_grid(pwplots, ggmatrix_gtable(plotface),Dgraph,labels=c("","D",""),nrow=3,
-          rel_heights=c(0.5,0.6,0.2),scale=.9,
+Table <- plot_grid(Dgraph,Dgraph2,nrow=2,rel_heights= c(0.6,0.4),labels=c("",""))
+threedim <- plot_grid(densitypl2,Table,ncol=2,labels=c("D",""),scale=.9,
           label_x = 0.05, label_y = 1)
 
-ggsave(paste0("MimicryFull_condition",cond,".png"), units="cm", width=45, height=35, dpi=600)
+plot_grid(pwplots,threedim,labels=c("",""),nrow=2,rel_heights=c(1,0.8))
+
+ggsave(paste0("MimicryFull_condB.png"), units="cm", width=45, height=25, dpi=600)
+
+# Other stufff ----
+
+
+
+# knn
+# riffing on multi-modelPBCM (MMPBCM)  Schultheis & Naidu (2014)
+# CogSci proceedings
+# https://escholarship.org/content/qt7544w9b0/qt7544w9b0.pdf
+
+# don't use difference GOF but use dimensionality of GOF to find
+# use k-nearest-neighbor
+
+
+# makeTibbleCM <- function(cm) {
+#   tibble(data.frame(num = c(as.numeric(cm[1,c(1:3)]),
+#                             as.numeric(cm[2,c(1:3)]),
+#                             as.numeric(cm[3,c(1:3)])),
+#                     genmodel = rep(row.names(cm),each=3),
+#                     model = rep(row.names(cm),3)
+#   ))
+#
+# }
+#
+# library(caret)
+#
+# prep <- testdat %>%
+#   dplyr::select(-AIC) %>%
+#   pivot_wider(names_from="model",id_cols=c("genmodel","id"),values_from="objective")
+#
+#
+# # Splitting data into train
+# # and test data
+#
+# datprep <- prep %>% mutate(split = sample(c("TRUE","FALSE"),size=length(dim(prep)[[1]]),replace=T,prob=c(0.7,0.3))) %>%
+#   mutate(genmodel = factor(genmodel)) %>% ungroup() %>% dplyr::select(-id,-split)
+#
+# set.seed(300)
+# #Spliting data as training and test set. Using createDataPartition() function from caret
+# indxTrain <- createDataPartition(y = datprep$genmodel,p = 0.75,list = FALSE)
+# training <- datprep[indxTrain,] %>% ungroup()
+# testing <- datprep[-indxTrain,] %>% ungroup()
+#
+# set.seed(400)
+# ctrl <- trainControl(method="repeatedcv",repeats = 3) #,classProbs=TRUE,summaryFunction = twoClassSummary)
+# knnFit <- train(genmodel ~ ., data = training, method = "knn", trControl = ctrl,
+#                 preProcess = c("center","scale"), tuneLength = 20)
+#
+# #Output of kNN fit
+# knnFit$results
+#
+# knnPredict <- predict(knnFit,newdata = testing)
+# #Get the confusion matrix to see accuracy value and other parameter values
+# test <- confusionMatrix( testing$genmodel,knnPredict, dnn = c("Generated", "Recovered"))
+# cm <- test$table
+#
+#
+# knnacc <- tibble(value = mean(testing$genmodel==knnPredict)) %>%
+#
+#   mutate(model = "sayA") %>%
+#   mutate(genmodel = "ZAcc") %>%
+#   mutate(penalty = "kNN")
+#
+# knntab <- makeTibbleCM(cm) %>% mutate(penalty = "kNN")
+#
+# # LDA
+#
+# library(MASS)
+#
+# # Estimate preprocessing parameters
+# preproc.param <- training %>%
+#   preProcess(method = c("center", "scale"))
+# # Transform the data using the estimated parameters
+# train.transformed <- preproc.param %>% predict(training)
+# test.transformed <- preproc.param %>% predict(testing)
+#
+# model <- lda(genmodel~., data =train.transformed)
+# predictions <- model %>% predict(test.transformed)
+#
+# cm <- table(test.transformed$genmodel,predictions$class)
+# ldatab <- makeTibbleCM(cm) %>% mutate(penalty = "LDA")
+#
+# ldaacc <- tibble(value = mean(test.transformed$genmodel==predictions$class)) %>%
+#
+#   mutate(model = "sayA") %>%
+#   mutate(genmodel = "ZAcc") %>%
+#   mutate(penalty = "LDA")
+#
+# # QDA
+#
+# model <- qda(genmodel~., data =train.transformed)
+# predictions <- model %>% predict(test.transformed)
+# # Model accuracy
+# mean(predictions$class==test.transformed$genmodel)
+#
+# model
+#
+# cm <- table(test.transformed$genmodel, predictions$class)
+# qdatab <- makeTibbleCM(cm) %>% mutate(penalty = "QDA")
+#
+# qdaacc <- tibble(value =mean(predictions$class==test.transformed$genmodel)) %>%
+#
+#   mutate(model = "sayA") %>%
+#   mutate(genmodel = "ZAcc") %>%
+#   mutate(penalty = "QDA")
+#
+# # MDA
+#
+# library(mda)
+# model <- mda(genmodel~., data =train.transformed)
+# predicted.classes <- model %>% predict(test.transformed)
+# # Model accuracy
+# mean(predicted.classes == test.transformed$genmodel)
+#
+# cm <- table(test.transformed$genmodel, predicted.classes)
+# mdatab <- makeTibbleCM(cm) %>% mutate(penalty = "MDA")
+#
+# mdaacc <- tibble(value =mean(predicted.classes == test.transformed$genmodel)) %>%
+#
+#   mutate(model = "sayA") %>%
+#   mutate(genmodel = "ZAcc") %>%
+#   mutate(penalty = "MDA")
+#
+#
+# mlmax <- bind_rows(knntab,ldatab,qdatab,mdatab) %>% group_by(penalty,genmodel) %>%
+#   mutate(value = num/sum(num)) %>% dplyr::select(-num) %>%
+#   mutate(model = case_when(model == "GumbelEVSDT" ~ "sayA",
+#                            model == "ExGaussNormEVSDT" ~ "sayB",
+#                            TRUE~"sayC"))
+#
+# mlaccuracy <- bind_rows(knnacc,ldaacc,qdaacc,mdaacc)
+#
+
+
+# tablegraph <- bind_rows(critmaxdiag,Accuracy,Penalty,mlmax,mlaccuracy) %>%
+#   mutate(penalty = factor(penalty,levels=c("objective","AIC","penobjective","kNN","LDA","QDA","MDA"),
+#                           labels=c("-2LL","AIC","Max Acc","k(=15)NN","LDA","QDA","MDA"))) %>%
+#   # mutate(model = factor(model)) %>%
+#   mutate(genmodel = factor(genmodel,levels=c("ZAcc","YPen","GaussianUVSDT","ExGaussNormEVSDT","GumbelEVSDT"),
+#                            labels = c("Accuracy","Penalty","UVSDT","EGNorm","Gumbel"))) %>%
+#   mutate(colorunder = ifelse(!genmodel %in%c("UVSDT","EGNorm","Gumbel"),1,0)) %>%
+#   mutate(colorunder = factor(colorunder))
+
+
+
+
+#
+# plotty <- testdat %>% mutate(logobj = log(Gsq)) %>% dplyr::select(-AIC,-objective,-Dev,-Gsq) %>%
+# mutate(genmodel = factor(genmodel,levels=c("GumbelEVSDT","ExGaussNormEVSDT","GaussianUVSDT"),
+#                          labels=c("Gumbel","EGNorm","UVSDT"))) %>%
+#   pivot_wider(names_from="model",values_from="logobj") %>%
+#   relocate(GumbelEVSDT,before=ExGaussNormEVSDT) %>%
+#   rename("Fit: Gumbel"=GumbelEVSDT,
+#          "Fit: EGNorm" =ExGaussNormEVSDT,
+#          "Fit: UVSDT" =GaussianUVSDT)
+# library(GGally)
+# p1 <- ggpairs(plotty,columns = c(1,2,5),
+#               mapping = ggplot2::aes(color = genmodel),
+#               legend = 1,
+#               upper = list(continuous = "blank"),
+#               lower = list(continuous = wrap("points", alpha = 0.1),
+#                            combo = wrap("dot", alpha = 0.4)),
+#               diag = list(continuous = wrap("densityDiag", alpha = 0.3)),
+#               xlab = expression(paste("log(",G^2,")")),
+#               ylab = NULL,
+#               axisLabels = c("show"))
+#
+#     for(i in 1:p1$nrow) {
+#     for(j in 1:p1$ncol){
+#       p1[i,j] <- p1[i,j] +
+#         scale_fill_manual(values=c("#56B4E9","#009E73", "#E69F00"), name= "Generating model") +
+#         scale_color_manual(values=c("#56B4E9","#009E73", "#E69F00"), name= "Generating model")
+#     }
+#   }
+#
+# plotface <- p1 + theme(legend.position = "bottom",
+#            panel.background = element_rect(fill = "white"),
+#
+#            panel.border = element_rect(colour = "black", fill = "transparent"),
+#            strip.background = element_rect(fill = "#F0F0F0",color="black"),
+#            strip.text = element_text(size=12))

@@ -35,7 +35,7 @@ data <- bestfit %>%
   select(-c(exp,model,id)) %>%
   select(c(condition,names(get_start_par(genmodel))))
 
-for(cond in c("A","B","C","D")){
+for(cond in c("C")){
 # for each model: identify mean/sd of paramaters and correlations between them
 
 datas <- data %>% filter(condition == cond) %>% ungroup() %>% select(-condition)
@@ -57,20 +57,48 @@ parameters <- tmvtnorm::rtmvnorm(n=2000, mean = means, sigma=sigmas,
                                  burn.in.samples=1000,
                                  thinning = 100)
 saveRDS(parameters,
-        file=paste0("SimulationData/simulate_genExGaussNormEVSDT_parametervalues_cond",cond,".rds"))
+        file=paste0("SimulationData/simulate_genGaussianUVSDT_parametervalues_cond",cond,".rds"))
 }
+
+outall <- NULL
+
+for(cond in c("A","B","C","D")){
+  # for each model: identify mean/sd of paramaters and correlations between them
+
+
+  datas <- data %>% filter(condition == cond) %>% ungroup() %>% select(-condition)
+  correlations <- cor(datas)
+  means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
+  sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1])
+  sigmas <- sds %*% t(sds) * correlations
+
+
+  out <- bind_rows(as_tibble(t(means)) %>% set_colnames(names(get_start_par(genmodel))) %>% mutate(type="M"),
+  as_tibble(t(sds)) %>% set_colnames(names(get_start_par(genmodel))) %>% mutate(type="SD")) %>%
+    mutate(condition = cond) %>%
+    mutate(model = "ExGaussNormEVSDT")
+
+  # Use multivariate to generate parameters on basis of multivariate distribution
+  # Sample 1000 possible sets of generating parameters per model
+
+outall <- outall %>% bind_rows(out)
+
+}
+
+outall <- bind_rows(outallUVSDT,outallGumbel,outallEGNorm)
+saveRDS(outall,file="mimicry_meansforMVNgeneration.rds")
 
 # Simulate data -----------------------------------------------------------------
 
 
 
 
-genmodel <- "ExGaussNormEVSDT"
+genmodel <- "GaussianUVSDT"
 
-for(cond in c("A","B","C","D")){
+for(cond in c("C")){
 
   simulation <- NULL
-  parameters <- readRDS(file=paste0("SimulationData/simulate_genExGaussNormEVSDT_parametervalues_cond",cond,".rds"))
+  parameters <- readRDS(file=paste0("SimulationData/simulate_genGaussianUVSDT_parametervalues_cond",cond,".rds"))
 
 for(i in c(1:dim(parameters)[[1]])){
 
@@ -99,7 +127,7 @@ for(i in c(1:dim(parameters)[[1]])){
 }
 
 
-saveRDS(simulation,file=paste0("SimulationData/simulate_genExGaussNormEVSDT_data_mimicry_cond",cond,".rds"))
+saveRDS(simulation,file=paste0("SimulationData/simulate_genGaussianUVSDT_data_mimicry_cond",cond,".rds"))
 
 }
 
