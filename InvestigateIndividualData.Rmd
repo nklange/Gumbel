@@ -35,9 +35,11 @@ load_files <- function(path,pattern) {
 }
 
 fits <- load_files("Fits2/","fit")
-fullsubj <-  bind_rows(readRDS("SB2021_individualpredictions.rds"),
-                      readRDS("SB2021_individualpredictions_ExGaussNorm.rds") %>%
-                        filter(!pred=="observed"))
+
+fullsubj <-  readRDS("SB2021_individualpredictions_total.rds")
+# fullsubj <-  bind_rows(readRDS("SB2021_individualpredictions.rds"),
+#                       readRDS("SB2021_individualpredictions_ExGaussNorm.rds") %>%
+#                         filter(!pred=="observed"))
 
 
 bestfit <- fits %>% filter(exp == experiment) %>% 
@@ -73,6 +75,8 @@ alls <- fullsubj %>%
 allresiduals <- NULL
 for(subjid in unique(alls$condid)){
 
+  
+  
       datonly <- alls %>% filter(model == "Data") %>% 
       ungroup() %>% filter(condid == subjid)
     
@@ -93,7 +97,7 @@ for(subjid in unique(alls$condid)){
 
 allresiduals <- allresiduals %>% 
   mutate(confidence = factor(confidence,levels = c(1:6))) %>% 
-  mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm")))
+  mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel","ExGauss")))
   
 
 UVSDTpreds <- fullsubj %>%
@@ -102,10 +106,10 @@ UVSDTpreds <- fullsubj %>%
   mutate(whowins = case_when(condid %in% GumbelWin ~ "Gumbel",
                              condid %in% EVSDTWin ~ "EVSDT",
                              condid %in% UVSDTWin  ~ "UVSDT",
-                             condid %in% ExGaussWin ~ "ExGaussNorm",
+                             condid %in% ExGaussWin ~ "ExGauss",
                              TRUE ~ "Else")) %>%
-  mutate(model = factor(model,levels = c(models,"Data"),labels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm","Data"))) %>%
-  mutate(whowins = factor(whowins,levels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm")))
+  mutate(model = factor(model,levels = c(models,"Data"),labels = c("EVSDT","UVSDT","Gumbel","ExGauss","Data"))) %>%
+  mutate(whowins = factor(whowins,levels = c("EVSDT","UVSDT","Gumbel","ExGauss")))
 
 
 Datonly <- UVSDTpreds %>% filter(model == "Data")
@@ -121,7 +125,7 @@ partable <- bestfit %>%
   pivot_longer(!c(exp,condid,id,condition,model),names_to="estimates",values_to="value") %>%
   mutate(estimates = factor(estimates, levels = rev(c("objective",
                                                 "muo","sigo","betao","c1","dc1","dc2","dc3","dc4")))) %>% 
-   mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm"))) 
+   mutate(model = factor(model,levels = c(models),labels = c("EVSDT","UVSDT","Gumbel","ExGauss"))) 
 
 UVSDTpredsLong <- UVSDTpreds  %>% select(exp,condid,id,condition,model,pred,confidence,freq_New,freq_Old,whowins) %>%
   pivot_longer(!c(exp,condid,id,condition,model,pred,confidence,whowins),names_to="oldnew",values_to="freq") %>%
@@ -149,17 +153,18 @@ labelconditions <- tibble(condition = c("A","B","C","D"),
 ```{r, echo=FALSE,message=FALSE,warning=FALSE}
 
 
-allparticipants <- unique(fullsubj$condid)
+allparticipants <- unique(fullsubj %>% filter(exp == experiment) %>% .$condid)
 
 plots_list = list()
 
 for (i in seq_along(allparticipants)){
+  
 
   subjid <- allparticipants[[i]]
 
 ind <- allfits %>% filter(condid == subjid) %>%
   bind_rows(tibble(delAIC = 0,model="A",condid = subjid)) %>%
-  mutate(model = factor(model,levels = c("A",models),labels = c("Winning","EVSDT","UVSDT","Gumbel","ExGaussNorm")))
+  mutate(model = factor(model,levels = c("A",models),labels = c("Winning","EVSDT","UVSDT","Gumbel","ExGauss")))
 
 maxDelta <- max(allfits %>% filter(condid == subjid) %>% .$delAIC) + 5
 
@@ -171,8 +176,8 @@ resids <- ggplot(allresiduals %>% filter(condid == subjid),
        aes(x = confidence,y = residuals,color=model,fill=model,group=model,shape=model)) +
   geom_hline(yintercept = 0) +
   scale_y_continuous(limits = c(-maxlim,maxlim),name = "Residuals of response proportions")+
-  scale_color_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73","#CC79A7")) +
-  scale_fill_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73","#CC79A7")) +
+  scale_color_manual(name = "Fitted Model",values = c("#CC79A7","#E69F00", "#009E73","#56B4E9")) +
+  scale_fill_manual(name = "Fitted Model",values = c("#CC79A7","#E69F00", "#009E73","#56B4E9")) +
   scale_shape_manual(name = "Fitted Model", values = c(22,21,24,23))+
   
   geom_line(size = 1, position = position_dodge(width = .6))+
@@ -199,7 +204,7 @@ AICplot <- ggplot(ind,
   geom_hline(yintercept = 2, linetype="dashed")+
   geom_hline(yintercept = 0)+
   geom_bar(stat = "identity") +
-  scale_fill_manual(name = "Fitted Model",values = c("#000000","#56B4E9","#E69F00","#009E73","#CC79A7")) +
+  scale_fill_manual(name = "Fitted Model",values = c("#000000","#CC79A7","#E69F00", "#009E73","#56B4E9")) +
   coord_cartesian(ylim = c(0,15))+
   scale_y_continuous(limits = c(0,maxDelta),name = expression(paste(Delta, " AIC")),breaks=c(0,1,2,5,10,15)) +
  
@@ -242,7 +247,7 @@ zroc <- ggplot(Datonly %>%  filter(condid == subjid),
                filter(condid == subjid),
               aes(x = zroc_New,y = zroc_Old,color=model),size=1,
               method="lm",formula = y ~ poly(x, 2), se = FALSE,fullrange=T)+
-  scale_color_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73","#CC79A7")) +
+  scale_color_manual(name = "Fitted Model",values = c("#CC79A7","#E69F00", "#009E73","#56B4E9")) +
   #scale_fill_manual(name = "Winning Model",values = c("#56B4E9","#E69F00", "#009E73"))+
   scale_shape_manual(name = "Fitted Model",values = c(16,15,17,18))+
   geom_point(data = Datonly  %>% filter(condid == subjid),aes(x = zroc_New,y = zroc_Old), color= "black",size=3,shape=15)+
@@ -273,7 +278,7 @@ confrating <- ggplot(data = DatonlyLong %>% filter(condid == subjid),
              aes(y = freq,x=confidence,fill=model,shape=model),
              size=2,position=position_dodge(width=0.8))+
   #geom_text(aes(label=round(freq)))+
-  scale_fill_manual(name = "Fitted Model",values = c("#56B4E9","#E69F00", "#009E73","#CC79A7"))+
+  scale_fill_manual(name = "Fitted Model",values = c("#CC79A7","#E69F00", "#009E73","#56B4E9"))+
   scale_shape_manual(name = "Fitted Model",values = c(22,21,24,23))+
   # scico::scale_fill_scico(palette = "bilbao")+
   # scale_fill_gradient2(limits = c(0, 60),
@@ -305,7 +310,7 @@ parametertable <-  ggplot(data = partable %>% filter(condid == subjid),
          aes(y = model,x = estimates)) +
   geom_tile(fill = "white",color="white") +
   geom_text(aes(label=round(value,2)))+
-  scale_x_discrete(position = "bottom",labels = rev(c("-LL","con.",expression(mu[o]),expression(sigma[o]),expression(lambda[o]),"c1",
+  scale_x_discrete(position = "bottom",labels = rev(c("-LL",expression(mu[o]),expression(sigma[o]),expression(beta[o]),"c1",
                                                "dc1","dc2","dc3","dc4")))+
     scale_y_discrete(position = "right",labels = c("EVSDT","UVSDT","Gumbel","ExGaussNorm"))+
     coord_flip()+
@@ -349,14 +354,14 @@ plots_list[[i]] <- plot_grid(title,plots,rel_heights = c(0.1,1),nrow=2)
 
 
 ```
-# SB2021_e2
+# SB2021_e2 (Spanton & Berry, 2021, Exp 2)
 
 2 memory strength (low, high) x 2 encoding variability (low, high) within-subjects, between-blocks recognition memory design.
 
-* A: High Strength, high EV
-* B: High Strength, low EV
-* C: Low strength, high EV
-* D: Low Strength, low EV
+* A: High Strength, high Encoding variability
+* B: High Strength, low Encoding variability
+* C: Low strength, high Encoding variability
+* D: Low Strength, low Encoding variability
 
 Individual-level plots of data, model fits and predictions of equal-variance Gaussian SDT (EVSDT, 6 parameters), unequal-variance Gaussian SDT (UVSDT, 7 parameters) and Gumbel SDT (Gumbel, 6 paraneters). 
 
@@ -365,10 +370,11 @@ Split by condition, and winning-model (in tabs).
 Plots:
 
 * **A**: Comparison by Delta AIC, cut-off at 15
-* **B** : Parameter estimates
+* **B** : Parameter estimates. Note, in Gumbel EVSDT: $\mu_o = -\mu_o$. In ExGauss: $\mu_o$ designates the mean of the combined old-items distribution rather than the mean of Gaussian component, $\beta_o = \frac{1}{\lambda_o}$ designates the scale of the exponential component, hence the mean of the Gaussian component is given by $\mu_o - \beta_o$.
 * **C**: zROC of data and model predictions (lines fitted by y = x^2). Note: scales vary by plot
 * **D**: frequency of responses observed (bars) and predicted (symbols)
-* **E**: residuals of predicted proportion of responses to observed data (+ means model predicts higher proportion of responses) in all response categories. Note: y-scale varies by plot
+* **E**: residuals of predicted proportion of responses to observed data (+ means model predicts higher proportion of responses) in all response
+categories. Note: y-scale varies by plot
 
 
 

@@ -22,7 +22,7 @@ bestfit <- fits %>%
 
 
 data <- bestfit %>%
-  filter(model %in% genmodel) %>% group_by(condition) %>%
+  filter(model %in% genmodel) %>% #group_by(condition) %>%
   mutate(strength = ifelse((condition == "A" | condition == "B"), "high","low"),
          variability = ifelse((condition == "A" | condition == "C"), "high","low")) %>%
   group_by(exp,condition,model) %>%
@@ -35,10 +35,12 @@ data <- bestfit %>%
   select(-c(exp,model,id)) %>%
   select(c(condition,names(get_start_par(genmodel))))
 
-for(cond in c("C")){
+for(cond in c("A","B","C","D")){
 # for each model: identify mean/sd of paramaters and correlations between them
 
-datas <- data %>% filter(condition == cond) %>% ungroup() %>% select(-condition)
+datas <- data %>%
+ # filter(condition == cond) %>%
+  ungroup() %>% select(-condition)
 correlations <- cor(datas)
 means <- as.numeric(t(datas %>% mutate_all(mean) %>% .[1,])[,1])
 sds <- as.numeric(t(datas %>% mutate_all(sd) %>% .[1,])[,1])
@@ -57,7 +59,7 @@ parameters <- tmvtnorm::rtmvnorm(n=2000, mean = means, sigma=sigmas,
                                  burn.in.samples=1000,
                                  thinning = 100)
 saveRDS(parameters,
-        file=paste0("SimulationData/simulate_genGaussianUVSDT_parametervalues_cond",cond,".rds"))
+        file=paste0("SimulationData/simulate_genExGaussNormEVSDT_parametervalues.rds"))
 }
 
 outall <- NULL
@@ -93,12 +95,12 @@ saveRDS(outall,file="mimicry_meansforMVNgeneration.rds")
 
 
 
-genmodel <- "GaussianUVSDT"
+genmodel <- "ExGaussNormEVSDT"
 
 for(cond in c("C")){
 
   simulation <- NULL
-  parameters <- readRDS(file=paste0("SimulationData/simulate_genGaussianUVSDT_parametervalues_cond",cond,".rds"))
+  parameters <- readRDS(file=paste0("SimulationData/simulate_genExGaussNormEVSDT_parametervalues.rds"))
 
 for(i in c(1:dim(parameters)[[1]])){
 
@@ -127,101 +129,6 @@ for(i in c(1:dim(parameters)[[1]])){
 }
 
 
-saveRDS(simulation,file=paste0("SimulationData/simulate_genGaussianUVSDT_data_mimicry_cond",cond,".rds"))
+saveRDS(simulation,file=paste0("SimulationData/simulate_genExGaussNormEVSDT_data_mimicry_cond",cond,".rds"))
 
 }
-
-# Basic mimicry ----------------------------------------------------------------
-
-
-GetGsquared <- function(LL,observedData){
-
-
-  temp <- c(observedData[1:6] * log(observedData[1:6]/sum(observedData[1:6])),
-            observedData[7:12] * log(observedData[7:12]/sum(observedData[7:12])))
-  temp[observedData == 0] <- 0
-
-  GSq = 2*(LL - -sum(temp) ) # Calculate G^2 (better approximator to Chi-sq dist than Pearson Chi-Sq)
- # f$df     <- length(observedData)-length(names(get_start_par(model)))-1            # df model (L&F,p.63) n_observations - n_freeparas - 1
-  #f$pGSq   <- 1-pchisq(f$GSq,f$df)       # p value of GSq
-
-
-
-  return(GSq)
-}
-
-
-fits <- readRDS(paste0("SimulationData/simulate_","genGumbelEVSDT","_data_","LOWN",".rds"))
-unique(fits$id)
-# LARGEN
-
-genmodels <- c("genGumbelEVSDT","genGaussianUVSDT","genExGaussNormEVSDT")
-
-listids <- unique(data$id)
-
-
-MimicryFits <- NULL
-for (sim in c("LARGEN","LOWN","KEEPCRITS")){
-for (gen in genmodels){
-
-
-fits <- readRDS(paste0("SimulationFits/",gen,"_",sim,"_bestfits.rds")) %>%
-  arrange(id,model) %>%
-  mutate(simulationtype = sim)
-
-selectedid <- unique(fits %>% .$id)
-
-fits <- fits %>% filter(id %in% selectedid) %>% arrange(id,model)
-
-data <- readRDS(paste0("SimulationData/simulate_",gen,"_data_",sim,".rds")) %>%
-  filter(id %in% selectedid) %>% arrange(id)%>%
-  mutate(simulationtype = sim)
-
-
-LL <- fits %>% mutate(genmodel = substr(gen,start=4,stop=nchar(gen))) %>%
-  group_by(simulationtype,sig,genmodel,id,model) %>%
-  group_nest(keep=T,.key="fit")
-
-observedData <- data %>% group_by(simulationtype,sig,genmodel,id) %>% group_nest(keep=T,.key="data") %>%
- dplyr::slice(rep(1:n(),each=4))
-
-getGsquaredvals <- LL %>% bind_cols(observedData %>% select(data)) %>%
-  mutate(Gsq = map2(.x = fit,.y = data, .f = ~GetGsquared(.x$objective,.y$Freq))) %>%
-  mutate(Dev = map(.x = fit,.f = ~mean(2*.x$objective))) %>%
-  mutate(AIC = map(.x = fit,.f = ~mean(.x$AIC))) %>%
-  filter(!model == "GumbelUVSDT")
-
-MimicryFits <- MimicryFits %>% bind_rows(getGsquaredvals)
-
-}
-}
-
-Bestfits <- MimicryFits %>% select(simulationtype,genmodel,id,model,Gsq,Dev,AIC) %>%
-  unnest(cols=c(Gsq,Dev,AIC)) %>%
-  group_by(simulationtype,genmodel,id) %>%
-  mutate(deltaDev = Dev - min(Dev),
-         minDev = min(Dev),
-         deltaAIC = AIC - min(AIC)) %>%
-  mutate(percentdeltaDev = deltaDev/minDev * 100) %>%
-  mutate(winningAIC = ifelse( deltaAIC== 0,1,0),
-         winningDev = ifelse( deltaDev== 0,1,0))
-
-
-Results <- Bestfits %>% group_by(simulationtype,genmodel,model) %>%
-  summarize(medianGsq = median(Gsq),
-            meanGsq = mean(Gsq),
-            sdGsq = sd(Gsq),
-            quant25Gsq = quantile(Gsq)[[2]],
-            quant75Gsq = quantile(Gsq)[[4]],
-            medianDev = median(deltaDev),
-            medianpercentDev = median(percentdeltaDev),
-            winAIC = sum(winningAIC),
-            winDev = sum(winningDev)) %>%
-  group_by(simulationtype,genmodel) %>%
-  mutate(winpropAIC = winAIC/sum(winAIC),
-         winpropDev = winDev/sum(winDev))
-
-
-
-test<-Results %>% select(simulationtype,genmodel,model,winpropAIC,medianGsq,medianpercentDev)
-

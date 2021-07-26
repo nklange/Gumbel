@@ -1,7 +1,7 @@
 source("preprocess_data.R")
 source("FitUVSDT.R")
 library(cowplot)
-models <- c("GaussianEVSDT","GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT")
+models <- c("GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT")
 
 load_files <- function(path,pattern) {
 
@@ -15,7 +15,7 @@ load_files <- function(path,pattern) {
 fits <- load_files("Fits2/","fit")
 
 bestfit <- fits %>%
-  mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
+  #mutate(objective = ifelse(objective < 0, objective * -1, objective)) %>%
   mutate(AIC = 2 * npar + 2 * objective) %>%
   group_by(model,id,condition) %>%
   arrange(objective) %>%
@@ -54,10 +54,15 @@ if(model == "GaussianUVSDT"){
   return(list(old = strength_old,new=strength_new))
 }
 
-pars <- bestfit %>% ungroup() %>% filter(condition == "A") %>%
+pars <- bestfit %>% ungroup() %>% filter(condition == "D") %>%
   select(model,muo,sigo,betao,c1,dc1,dc2,dc3,dc4) %>%
   group_by(model) %>%
-  summarise_all(median,na.rm=T) %>% ungroup()
+  summarise_all(median,na.rm=T) %>% ungroup() %>%
+  mutate(muo = muo * 2) %>%
+  mutate(betao = betao * 1.5)
+
+
+
 
 
 densityplot <- function(modelname){
@@ -71,30 +76,30 @@ genden <- generatedensities(modelname,par)
 
 
 dats <- tibble(type = rep(c("old","new"),each=1e6),
-               value = c(genden$old,genden$new))
-
-
-critsprop <- cumsum(as.numeric(crits))
-muo <- par[[1]]
-
-if(modelname == "GumbelEVSDT"){
-  #critsprop <- -critsprop
-  muo <- -muo
+               value = c(genden$old,genden$new)) %>%
+  mutate(model = modelname)
 
 }
 
+dats <- bind_rows(densityplot("GaussianUVSDT"),
+densityplot("GumbelEVSDT"),densityplot("ExGaussNormEVSDT")) %>%
+  mutate(model = factor(model, levels = c("GaussianUVSDT","GumbelEVSDT","ExGaussNormEVSDT"),
+                        labels = c("UVSDT","Gumbel","ExGauss")))
 
-
-plot <- ggplot(dats,aes(x = value,color=type))+
-  geom_density(size=1) +
-  coord_cartesian(xlim = c(-6,6))+
-  scale_color_manual(labels=c("New","Studied"),values=c("#0072B2", "#D55E00"))+
+#c("#E69F00", "#009E73", "#56B4E9")
+Ill_UVSDT <- ggplot(dats %>% filter(model=="UVSDT"),aes(x = value,fill=type))+
+  geom_density(size=1,alpha=0.7) +
+  coord_cartesian(xlim = c(-6,8),ylim=c(0,0.4))+
+  scale_fill_manual(values=c("#8c6100","#E69F00"),labels=c("New","Studied"))+
   scale_x_continuous(breaks=c(0),labels=c("0"))+
-  geom_vline(xintercept = critsprop[[1]], linetype="dashed",color="grey") +
-  geom_vline(xintercept = critsprop[[2]], linetype="dashed",color="grey") +
-  geom_vline(xintercept = critsprop[[3]], linetype="dashed",color="grey") +
-  geom_vline(xintercept = critsprop[[4]], linetype="dashed",color="grey") +
-  geom_vline(xintercept = critsprop[[5]], linetype="dashed",color="grey") +
+  annotate("text",x=2,y=0.38,hjust=0,size=3.5,label=expression(paste("Free: ", mu[s], ", ",sigma[s])))+
+  annotate("text",x=2,y=0.4,hjust=0,size=3.5,label=expression(paste("Fixed: ", mu[n]," = 0, ", sigma[n]," = 1")))+
+  # geom_vline(xintercept = critsprop[[1]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[2]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[3]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[4]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[5]], linetype="dashed",color="grey") +
+  facet_grid(.~model)+
   theme(axis.text.x = element_text(size=12),
         axis.title.x = element_blank(),
         axis.text.y = element_blank(),
@@ -102,18 +107,71 @@ plot <- ggplot(dats,aes(x = value,color=type))+
         axis.title.y = element_blank(),
         legend.title = element_blank(),
         panel.background = element_rect(fill = "white"),
-        legend.position = c(0.2,0.5),
+        legend.position = c(0.2,0.6),
         panel.border = element_rect(colour = "black", fill = "transparent"),
         strip.background = element_rect(fill = "white"),
         strip.placement = "outside",
         strip.text = element_text(size=12))
 
-plot
-}
+Ill_Gum <- ggplot(dats %>% filter(model=="Gumbel"),aes(x = value,fill=type))+
+  geom_density(size=1,alpha=0.7) +
+  coord_cartesian(xlim = c(-6,8),ylim=c(0,0.4))+
+  scale_fill_manual(values=c("#005941","#009E73"),labels=c("New","Studied"))+
+  scale_x_continuous(breaks=c(0),labels=c("0"))+
+  annotate("text",x=2,y=0.38,hjust=0,size=3.5,label=expression(paste("Free: ", mu[s])))+
+  annotate("text",x=2,y=0.4,hjust=0,size=3.5,label=expression(paste("Fixed: ", mu[n]," = 0, ", beta[n]," = ",beta[s]," = 1")))+
+  # geom_vline(xintercept = critsprop[[1]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[2]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[3]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[4]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[5]], linetype="dashed",color="grey") +
+  facet_grid(.~model)+
+  theme(axis.text.x = element_text(size=12),
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        legend.position = c(0.2,0.6),
+        panel.border = element_rect(colour = "black", fill = "transparent"),
+        strip.background = element_rect(fill = "white"),
+        strip.placement = "outside",
+        strip.text = element_text(size=12))
 
-plot_grid(densityplot("GaussianEVSDT"),densityplot("GaussianUVSDT"),
-          densityplot("GumbelEVSDT"),densityplot("ExGaussNormEVSDT"),nrow=2,
-          labels="AUTO",scale=.9)
+
+Ill_EG <- ggplot(dats %>% filter(model=="ExGauss"),aes(x = value,fill=type))+
+  geom_density(size=1,alpha=0.7) +
+  coord_cartesian(xlim = c(-6,8),ylim=c(0,0.4))+
+  scale_fill_manual(values=c("#2b5e7a","#56B4E9"),labels=c("New","Studied"))+
+  scale_x_continuous(breaks=c(0),labels=c("0"))+
+  annotate("text",x=2,y=0.38,hjust=0,size=3.5,label=expression(paste("Free: ", mu[s[G]], ", ",beta[s]," = 1/",lambda[s])))+
+  annotate("text",x=2,y=0.4,hjust=0,size=3.5,label=expression(paste("Fixed: ", mu[n]," = 0, ", sigma[n]," = ",sigma[s[G]]," = 1")))+
+  # geom_vline(xintercept = critsprop[[1]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[2]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[3]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[4]], linetype="dashed",color="grey") +
+  # geom_vline(xintercept = critsprop[[5]], linetype="dashed",color="grey") +
+  facet_grid(.~model)+
+  theme(axis.text.x = element_text(size=12),
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        legend.position = c(0.2,0.6),
+        panel.border = element_rect(colour = "black", fill = "transparent"),
+        strip.background = element_rect(fill = "white"),
+        strip.placement = "outside",
+        strip.text = element_text(size=12))
 
 #based on median par estimates from fits to Spanton & Berry
-#ggsave("IllustrateModels.png", units="cm", width=30, height=20, dpi=600)
+
+plot_grid(Ill_UVSDT,Ill_Gum,Ill_EG,nrow=1)
+
+
+ggsave("Figures/IllustrateModels.png", units="cm", width=30, height=10, dpi=600)
+
+
+print(citation(package="brms"), bibtex=TRUE)
